@@ -44,6 +44,15 @@ const browser = await puppeteer.launch({
   ]
 });
 
+// ========================================
+// RAILWAY CONFIGURATION
+// ========================================
+
+const IS_RAILWAY = !!process.env.RAILWAY_ENVIRONMENT_NAME;
+const PORT = parseInt(process.env.PORT) || 3000;
+const HOST = IS_RAILWAY ? '0.0.0.0' : 'localhost';
+
+console.log(`[RAILWAY CONFIG] IS_RAILWAY: ${IS_RAILWAY}, PORT: ${PORT}, HOST: ${HOST}`);
 
 // ========================================
 // HELPER FUNCTIONS - MOVED TO TOP
@@ -1272,9 +1281,6 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 // GLOBAL SERVER SETUP
 // ========================================
 
-const PORT = process.env.PORT || await getNextOpenPort(1024);
-var port = PORT;
-
 const global_app = express();
 const global_server = createServer(global_app);
 const global_io = new Server(global_server);
@@ -1353,14 +1359,11 @@ global_app.post("/api/add_server", async (req, res) => {
 	emit_server_info();
 });
 
-const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
 global_server.listen(PORT, HOST, () => {
-	const url = process.env.NODE_ENV === 'production' 
-		? `http://0.0.0.0:${PORT}` 
-		: `http://localhost:${PORT}`;
-	console.log(`Now listening to: ${url}`);
-	if (process.env.NODE_ENV !== 'production') {
-		open(url);
+	console.log(`[SERVER START] Listening on ${HOST}:${PORT}`);
+	if (!IS_RAILWAY) {
+		// Only try to open browser on local development
+		open(`http://localhost:${PORT}`).catch(() => {});
 	}
 	emit_server_info();
 });
