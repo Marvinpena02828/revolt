@@ -4,6 +4,8 @@
     "builder": "nixpacks"
   },
   "deploy": {
-    "startCommand": "node bot-complete.js"
+    "startCommand": "node bot.js",
+    "restartPolicyType": "on_failure",
+    "restartPolicyMaxRetries": 5
   }
 }
