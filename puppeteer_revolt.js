@@ -1485,7 +1485,7 @@ global_app.get("/", (req, res) => {
 					logsEl.innerHTML = logs.map(log => {
 						const className = log.type === 'error' ? 'log-error' : 
 										   log.type === 'success' ? 'log-success' : 'log-debug';
-						return \`<div class="log-entry \${className}">[\\${log.timestamp}] \\${log.message}</div>\`;
+						return '<div class="log-entry ' + className + '">[' + log.timestamp + '] ' + log.message + '</div>';
 					}).join('');
 					logsEl.scrollTop = 0;
 				}
@@ -1504,29 +1504,30 @@ global_app.get("/", (req, res) => {
 						return;
 					}
 
-					document.getElementById('serversList').innerHTML = servers.map(server => \`
-						<div class="server-card">
-							<h3>\\${server.username || server.folder}</h3>
-							<div class="server-status">
-								Status: <span class="status-indicator \\${server.is_running ? 'connected' : 'disconnected'}"></span>
-								\\${server.is_running ? 'Running' : 'Stopped'}
-							</div>
-							<div class="server-status">
-								Port: \\${server.port || 'N/A'}
-							</div>
-							<div class="server-status">
-								Mode: \\${server.is_headless ? 'Headless' : 'Headful'}
-							</div>
-							<div class="actions">
-								\\${server.port ? \`<button onclick="window.open('http://localhost:\\${server.port}')">Dashboard</button>\` : ''}
-								<button class="danger" onclick="deleteServer('\\${server.folder}')">Delete</button>
-							</div>
-						</div>
-					\`).join('');
+					document.getElementById('serversList').innerHTML = servers.map(server => {
+						const dashboardBtn = server.port ? '<button onclick="window.open(\\'http://localhost:' + server.port + '\\')">Dashboard</button>' : '';
+						return '<div class="server-card">' +
+							'<h3>' + (server.username || server.folder) + '</h3>' +
+							'<div class="server-status">' +
+								'Status: <span class="status-indicator ' + (server.is_running ? 'connected' : 'disconnected') + '"></span>' +
+								(server.is_running ? 'Running' : 'Stopped') +
+							'</div>' +
+							'<div class="server-status">' +
+								'Port: ' + (server.port || 'N/A') +
+							'</div>' +
+							'<div class="server-status">' +
+								'Mode: ' + (server.is_headless ? 'Headless' : 'Headful') +
+							'</div>' +
+							'<div class="actions">' +
+								dashboardBtn +
+								'<button class="danger" onclick="deleteServer(\\'' + server.folder + '\\')">Delete</button>' +
+							'</div>' +
+						'</div>';
+					}).join('');
 				});
 
 				socket.on('bot_info', (info) => {
-					addLog('success', \`Bot logged in as: \\${info.username}\`);
+					addLog('success', 'Bot logged in as: ' + info.username);
 					updateBotStatus('connected', 'Connected to Revolt');
 				});
 
