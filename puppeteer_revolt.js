@@ -160,11 +160,10 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		return 0;
 	}
 
-	// Don't create separate ports - all dashboards served from main port 3000
-	const botDashboardPath = `/bot/${IDENTIFIER_USER}`;
+	var port = await getNextOpenPort(getRandomInt(49152, 50000));
 	ports[IDENTIFIER_USER] = {
 		user: IDENTIFIER_USER,
-		dashboardPath: botDashboardPath,
+		port,
 		is_running,
 		is_headless: IS_HEADLESS,
 	};
@@ -952,8 +951,11 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		return await sendMessageDirect(id, content);
 	}
 
-	// ✅ BOT LOGIN PAGE - Opens in popup
-	app.get("/login", (req, res) => {
+	// Note: Dashboard routes will be added to GLOBAL app below
+	// Individual app.get routes disabled - using global_app instead
+	
+	// DISABLED - using global_app instead
+	// app.get("/login", (req, res) => {
 		res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -990,8 +992,8 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 </html>`);
 	});
 
-	// ✅ BOT DASHBOARD
-	app.get("/", (req, res) => {
+	// DISABLED - using global_app instead
+	// app.get("/", (req, res) => {
 		res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -1392,8 +1394,25 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		emit_server_info();
 	});
 
-	// Individual bot servers disabled - all served from main PORT 3000
-	// Each bot accessible at: /bot/IDENTIFIER_USER
+	try {
+		addLog({ type: "DebugMessage", message: "Starting bot dashboard server" });
+
+		const IS_RAILWAY = !!process.env.RAILWAY_ENVIRONMENT_NAME;
+		const RAILWAY_HOST = IS_RAILWAY ? '0.0.0.0' : 'localhost';
+		const RAILWAY_DOMAIN = process.env.RAILWAY_PUBLIC_DOMAIN || `localhost:${port}`;
+
+		server.listen(port, RAILWAY_HOST, () => {
+			const protocol = IS_RAILWAY ? 'https' : 'http';
+			addLog({ type: "DebugMessage", message: `Now listening to: ${protocol}://${RAILWAY_DOMAIN}` });
+		});
+	} catch (error) {
+		if (error.code == "ERR_SERVER_ALREADY_LISTEN") {
+			addLog({ type: "DebugMessage", message: "Bot dashboard server already running" });
+		}
+		if (error.code == "EADDRINUSE") {
+			port = getRandomInt(49152, 50000);
+		}
+	}
 }
 
 var global_io;
@@ -1475,6 +1494,139 @@ global_app.post("/api/add_server", async (req, res) => {
 	await start_everything(slug, true, false);
 
 	emit_server_info();
+});
+
+// ✅ BOT DASHBOARD ROUTE - served from global app on port 3000
+global_app.get("/bot/:serverId", (req, res) => {
+	const serverId = req.params.serverId;
+	res.send(`<!DOCTYPE html>
+<html>
+<head>
+	<title>Revolt Bot</title>
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body { font-family: 'Segoe UI', Arial; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #fff; padding: 20px; }
+		.container { max-width: 1200px; margin: 0 auto; }
+		.header { background: rgba(0,0,0,0.5); padding: 20px; border-radius: 12px; border-left: 4px solid #4CAF50; margin-bottom: 20px; }
+		.header h1 { color: #4CAF50; margin-bottom: 10px; }
+		.buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+		.btn { background: #4CAF50; color: #fff; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+		.btn:hover { background: #45a049; }
+		.btn.primary { background: #5865F2; }
+		.btn.primary:hover { background: #4752C4; }
+		.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+		.card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 20px; border-radius: 12px; }
+		.card h2 { color: #4CAF50; margin-bottom: 15px; }
+		.card p { color: #aaa; line-height: 1.6; margin-bottom: 10px; font-size: 13px; }
+		.logs { background: rgba(0,0,0,0.5); border-radius: 8px; padding: 15px; height: 300px; overflow-y: auto; font-family: monospace; font-size: 11px; line-height: 1.6; }
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1>🤖 Revolt Bot - ${serverId}</h1>
+			<p>Status: <span id="status" style="color: #4CAF50;">🟢 Connecting...</span></p>
+		</div>
+
+		<div class="buttons">
+			<button class="btn primary" onclick="openLogin()">🔐 Open Login Tab</button>
+			<button class="btn" onclick="location.reload()">🔄 Reload</button>
+			<button class="btn" onclick="window.history.back()">← Back</button>
+		</div>
+
+		<div class="grid">
+			<div class="card">
+				<h2>📋 Setup</h2>
+				<p>1. Click "🔐 Open Login Tab"</p>
+				<p>2. Login sa Revolt</p>
+				<p>3. Close login tab</p>
+				<p>4. Bot connects! ✅</p>
+			</div>
+
+			<div class="card">
+				<h2>📊 Bot Info</h2>
+				<p>User: <strong id="username">Waiting...</strong></p>
+				<p>Servers: <strong id="servers">0</strong></p>
+				<p>Channels: <strong id="channels">0</strong></p>
+			</div>
+
+			<div class="card">
+				<h2>⚡ Features</h2>
+				<p>✅ 5x FASTER</p>
+				<p>✅ Auto-responses</p>
+				<p>✅ Per-server config</p>
+			</div>
+		</div>
+
+		<div class="card" style="margin-top: 20px;">
+			<h2>📝 Logs</h2>
+			<div id="logs" class="logs"><p style="color: #888;">Waiting...</p></div>
+		</div>
+	</div>
+
+	<script src="/socket.io/socket.io.js"><\/script>
+	<script>
+		const socket = io();
+		let logs = [];
+		const serverId = '${serverId}';
+
+		function openLogin() {
+			window.open('/bot/${serverId}/login', '_blank', 'width=900,height=700');
+		}
+
+		socket.on('connect', () => {
+			document.getElementById('status').textContent = '🟢 Connected';
+		});
+
+		socket.on('disconnect', () => {
+			document.getElementById('status').textContent = '🔴 Disconnected';
+		});
+
+		socket.on('log', (data) => {
+			const time = new Date(data.timestamp).toLocaleTimeString();
+			const msg = typeof data.log === 'object' ? (data.log.message || JSON.stringify(data.log)) : String(data.log);
+			const color = data.log?.type === 'ErrorMessage' ? '#f44336' : data.log?.type === 'BotMessage' ? '#4CAF50' : '#aaa';
+			
+			logs.unshift('<div style="color:' + color + '"><small>[' + time + ']</small> ' + msg + '</div>');
+			if (logs.length > 50) logs.pop();
+			
+			const el = document.getElementById('logs');
+			el.innerHTML = logs.join('');
+			el.scrollTop = 0;
+		});
+	<\/script>
+</body>
+</html>`);
+});
+
+// ✅ LOGIN PAGE - served from global app on port 3000
+global_app.get("/bot/:serverId/login", (req, res) => {
+	res.send(`<!DOCTYPE html>
+<html>
+<head>
+	<title>Revolt Login</title>
+	<style>
+		* { margin: 0; padding: 0; }
+		body { font-family: Arial; background: #1a1a1a; height: 100vh; }
+		.container { width: 100%; height: 100%; display: flex; flex-direction: column; }
+		.header { background: #2a2a2a; padding: 15px; border-bottom: 2px solid #4CAF50; color: #fff; }
+		.header h2 { color: #4CAF50; margin-bottom: 5px; }
+		a { color: #4CAF50; text-decoration: none; font-weight: bold; cursor: pointer; }
+		a:hover { text-decoration: underline; }
+		iframe { flex: 1; border: none; width: 100%; }
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h2>🔐 Login to Revolt</h2>
+			<p style="color: #aaa; font-size: 13px;">Login with your Revolt account. Once done, close this tab.</p>
+			<p><a onclick="window.close()">✕ Close Tab</a></p>
+		</div>
+		<iframe src="https://revolt.onech.at/"><\/iframe>
+	</div>
+</body>
+</html>`);
 });
 
 const IS_RAILWAY = !!process.env.RAILWAY_ENVIRONMENT_NAME;
