@@ -525,10 +525,9 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	async function initialize_puppeteer() {
 	try {
 		browser = await puppeteer.launch({
-			userDataDir: `./${IDENTIFIER_USER}/browser-userdata`,
-			executablePath: '/usr/bin/google-chrome', // ✅ Use system chromium
-			headless: force_headful ? false : IS_HEADLESS,
-			args: [
+	userDataDir: `./${IDENTIFIER_USER}/browser-userdata`,
+	headless: force_headful ? false : IS_HEADLESS,
+	args: [
 				"--disable-blink-features=AutomationControlled",
 				"--no-sandbox",
 				"--disable-setuid-sandbox",
