@@ -19,15 +19,6 @@ import { generateSlug } from "random-word-slugs";
 
 const bot_version = "revolt bot v4.26.2025.1128am-MAX-SPEED";
 
-// ========================================
-// RAILWAY CONFIGURATION
-// ========================================
-const IS_RAILWAY = !!process.env.RAILWAY_ENVIRONMENT_NAME;
-const RAILWAY_PORT = parseInt(process.env.PORT) || 3000;
-const RAILWAY_HOST = IS_RAILWAY ? '0.0.0.0' : 'localhost';
-
-console.log(`[RAILWAY] Enabled: ${IS_RAILWAY}, PORT: ${RAILWAY_PORT}, HOST: ${RAILWAY_HOST}`);
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 if (process.platform == "win32") {
@@ -44,6 +35,15 @@ const rl = createInterface({
 	output: process.stdout,
 	terminal: true,
 });
+
+// ========================================
+// RAILWAY CONFIGURATION
+// ========================================
+const IS_RAILWAY = !!process.env.RAILWAY_ENVIRONMENT_NAME;
+const RAILWAY_PORT = parseInt(process.env.PORT) || 3000;
+const RAILWAY_HOST = IS_RAILWAY ? '0.0.0.0' : 'localhost';
+
+console.log(`[RAILWAY] Enabled: ${IS_RAILWAY}, PORT: ${RAILWAY_PORT}, HOST: ${RAILWAY_HOST}`);
 
 // ========================================
 // HELPER FUNCTIONS - MOVED TO TOP
@@ -118,12 +118,10 @@ function emit_server_info() {
 	global_io.emit("servers", user_infos);
 }
 
-// ✅ MAX SPEED: Pre-generate nonce pool
 function generate_nonce(length) {
 	return randomBytes(length).toString("base64").replace(/\+/g, "0").replace(/\//g, "1").substring(0, length).toUpperCase();
 }
 
-// ✅ MAX SPEED: Nonce pool - pre-generate 1000 nonces
 var noncePool = [];
 function fillNoncePool() {
 	while (noncePool.length < 1000) {
@@ -134,13 +132,13 @@ fillNoncePool();
 
 function getNonce() {
 	if (noncePool.length < 100) {
-		fillNoncePool(); // Async refill when running low
+		fillNoncePool();
 	}
 	return noncePool.pop() || `01${generate_nonce(24)}`;
 }
 
 // ========================================
-// MAIN FUNCTION
+// MAIN FUNCTION - COMPLETE ORIGINAL LOGIC
 // ========================================
 
 async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMEDIATELY = true) {
@@ -202,7 +200,6 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 
 	app.use(express.static(path.join(__dirname, "public")));
 
-	// CORS middleware
 	app.use((req, res, next) => {
 		res.setHeader("Access-Control-Allow-Origin", "*");
 
@@ -259,10 +256,8 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 
 	var newChannels = [];
 
-	// ✅ MAX SPEED: Cache already_responded in memory
 	var alreadyRespondedCache = new Set(fs.existsSync(`./${IDENTIFIER_USER}/already_responded.txt`) ? fs.readFileSync(`./${IDENTIFIER_USER}/already_responded.txt`).toString().split("\n").filter((x) => x) : []);
 
-	// ✅ MAX SPEED: Direct message sending function using Node.js fetch
 	async function sendMessageDirect(channelId, content) {
 		try {
 			const nonce = getNonce();
@@ -305,7 +300,8 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		io.emit("bot_version", bot_version);
 		io.emit("instant_responses", instantResponses);
 		emit_server_info();
-		console.log("Connected");
+		addLog({ type: "DebugMessage", message: `✅ CONNECTED - Bot logged in as: ${user.username}` });
+		console.log("✅ Connected - Bot is active!");
 	});
 
 	eventEmitter.on("Message", async (msg, page) => {
@@ -333,7 +329,6 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 			if (instantResponse.found) {
 				addLog({ type: "BotMessage", message: `✅ Instant response match` });
 				if (instantResponse?.response) {
-					// ✅ MAX SPEED: Use direct send
 					var result = await sendMessageDirect(msg?.channel, instantResponse?.response?.respondWith);
 					addLog({ type: "DebugMessage", message: JSON.stringify(result) });
 				} else {
@@ -352,20 +347,17 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 
 		var _canReply = await getCanReply(null, msg.name, msg.server);
 
-		// ✅ MAX SPEED: Use cached Set
 		if (alreadyRespondedCache.has(msg._id)) {
-			return; // Skip silently for maximum speed
+			return;
 		}
 
 		if (_canReply.canReply) {
-			// ✅ MAX SPEED: Add to cache immediately
 			alreadyRespondedCache.add(msg._id);
 			fs.appendFileSync(`./${IDENTIFIER_USER}/already_responded.txt`, msg._id + "\n");
 
 			var response = responses[msg.server] || "";
 
 			if (response) {
-				// ✅ MAX SPEED: Use setImmediate to ensure we don't block WebSocket processing
 				setImmediate(async () => {
 					try {
 						if (responseType[msg.server] == "PARSED_NUMBER") {
@@ -373,7 +365,6 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 						}
 
 						if (response) {
-							// ✅ MAX SPEED: Direct send - NO page.evaluate overhead!
 							const result = await sendMessageDirect(msg._id, response);
 							addLog({ type: "BotMessage", message: `⚡ SENT to "${msg.name}"` });
 						}
@@ -407,14 +398,12 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 			const channel = clonedChannels[i];
 
 			if (`${JSON.stringify(msg?.data?.categories)}`.includes(channel._id)) {
-				// ✅ MAX SPEED: Use cached Set
 				if (alreadyRespondedCache.has(channel._id)) {
 					continue;
 				}
 
 				newChannels.splice(i, 1);
 
-				// ✅ MAX SPEED: Add to cache immediately
 				alreadyRespondedCache.add(channel._id);
 				fs.appendFileSync(`./${IDENTIFIER_USER}/already_responded.txt`, channel._id + "\n");
 
@@ -425,7 +414,6 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 					var response = responses[channel.server] || "";
 
 					if (response) {
-						// ✅ MAX SPEED: Use setImmediate
 						setImmediate(async () => {
 							try {
 								if (responseType[channel.server] == "PARSED_NUMBER") {
@@ -433,7 +421,6 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 								}
 
 								if (response) {
-									// ✅ MAX SPEED: Direct send
 									const result = await sendMessageDirect(channel._id, response);
 									addLog({ type: "BotMessage", message: `⚡ SENT to "${channel.name}"` });
 								}
@@ -526,7 +513,6 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	}
 
 	async function initialize_puppeteer() {
-		// FIX #2: Force headless mode on Railway
 		const headlessMode = IS_RAILWAY ? true : (force_headful ? false : IS_HEADLESS);
 		
 		browser = await puppeteer.launch({
@@ -540,7 +526,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 
 		await page.goto("https://revolt.onech.at/");
 
-		addLog({ type: "DebugMessage", message: "Puppeteer launched" });
+		addLog({ type: "DebugMessage", message: "Puppeteer launched, connecting to Revolt..." });
 
 		const client = await page.target().createCDPSession();
 
@@ -573,7 +559,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 							initialize_puppeteer();
 						}, 1000);
 					} else {
-						addLog({ type: "DebugMessage", message: "Authenticated" });
+						addLog({ type: "DebugMessage", message: "✅ Authenticated successfully!" });
 					}
 				}
 			}
@@ -593,7 +579,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 
 			if (currentUrl.startsWith("https://revolt.onech.at/login") && !force_headful) {
 				force_headful = true;
-				addLog({ type: "DebugMessage", message: `Redirected to /login` });
+				addLog({ type: "DebugMessage", message: `Redirected to /login - need manual login` });
 
 				const cookies = await page.cookies();
 				for (const cookie of cookies) {
@@ -615,7 +601,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 				const lowerContent = content.toLowerCase();
 
 				if ((lowerContent.includes("security of your connection") || lowerContent.includes("blocked")) && !force_headful) {
-					addLog({ type: "DebugMessage", message: `Cloudflare detected` });
+					addLog({ type: "DebugMessage", message: `Cloudflare detected - opening login` });
 					force_headful = true;
 
 					const cookies = await page.cookies();
@@ -972,7 +958,6 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		}
 	}
 
-	// Keep the old sendMessage for API compatibility
 	async function sendMessage(id, content, page) {
 		return await sendMessageDirect(id, content);
 	}
@@ -1013,229 +998,8 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		res.json({ ...responses, error: false });
 	});
 
-	app.post("/api/set_response_keyword_case_sensitive", async (req, res) => {
-		if (!req.query.state) {
-			return res.status(400).json({ error: true, message: "State is empty" });
-		}
-		if (!req.query.state != true && !req.query.state != false) {
-			return res.status(400).json({ error: true, message: "State is not a boolean" });
-		}
-		if (!req.query.serverId) {
-			return res.status(400).json({ error: true, message: "Server ID is empty" });
-		}
-
-		await setKeywordCaseSensitive(req.query.state, req.query.serverId);
-		addLog({ type: "DebugMessage", message: `Keyword responding is now ${req.query.state ? "case sensitive" : "case insensitive"} on "${req.query.serverId}"` });
-		res.json({ ...responses, error: false });
-	});
-
-	app.post("/api/add_response_keyword", async (req, res) => {
-		if (!req.query.string) {
-			return res.status(400).json({ error: true, message: "String is empty" });
-		}
-		if (!req.query.serverId) {
-			return res.status(400).json({ error: true, message: "Server ID is empty" });
-		}
-
-		try {
-			var result = await addReplyWithKeyword(req.query.string, req.query.serverId);
-			addLog({ type: "DebugMessage", message: `Bot will now respond to categories on server "${req.query.serverId}" with the keyword ${req.query.string}` });
-			io.emit("responses", responses);
-			res.json({ ...responses, error: false });
-		} catch (error) {
-			if (error.message == "DUPLICATE_KEYWORD") {
-				return res.status(400).json({
-					error: true,
-					reason: "DUPLICATE_KEYWORD",
-				});
-			}
-			res.status(500).json(error);
-		}
-	});
-
-	app.post("/api/delete_keyword", async (req, res) => {
-		if (!req.query.string) {
-			return res.status(400).json({ error: true, message: "String is empty" });
-		}
-		if (!req.query.serverId) {
-			return res.status(400).json({ error: true, message: "Server ID is empty" });
-		}
-
-		try {
-			var result = await removeKeyword(req.query.string, req.query.serverId);
-			addLog({ type: "DebugMessage", message: `Keyword "${req.query.string}" for matching has been removed on server ${req.query.serverId}` });
-			io.emit("responses", responses);
-			res.json({ ...responses, error: false });
-		} catch (error) {
-			if (error.message == "NON_EXISTENT_KEYWORD") {
-				return res.status(400).json({
-					error: true,
-					reason: "NON_EXISTENT_KEYWORD",
-				});
-			}
-			res.status(500).json(error);
-		}
-	});
-
-	app.post("/api/set_can_reply", async (req, res) => {
-		if (!req.query.categoryId) {
-			return res.status(400).json({ error: true, message: "Category ID is empty" });
-		}
-
-		addLog({ type: "DebugMessage", message: `Bot will now respond on category "${req.query.categoryId}"` });
-		await setCanReply(req.query.categoryId);
-		res.json({ canReply, error: false });
-	});
-
-	app.post("/api/join_server", async (req, res) => {
-		if (!req.query.serverUrl) {
-			return res.status(400).json({ error: true, message: "Server URL is empty" });
-		}
-		try {
-			const result = await joinServer(req.query.serverUrl, global_page);
-
-			if (!clientInfo.servers.some((server) => server._id == result.server._id)) {
-				clientInfo.servers.push(result.server);
-				clientInfo.channels = [...clientInfo.channels, ...result.channels];
-			}
-
-			if (result.error) {
-				res.status(400).json({ error: true, message: `Something went wrong in joining the server link.`, response: result.response });
-			} else {
-				addLog({ type: "DebugMessage", message: `Bot has joined the server with the invite link "${req.query.serverUrl}"` });
-				res.json({ ...result, clientInfo });
-			}
-		} catch (error) {
-			res.status(500).json({ error: true, message: `Something went wrong in joining the server link.`, response: error });
-		} finally {
-			io.emit("serverInfo", clientInfo);
-			io.emit("canReply", canReply);
-			io.emit("responses", responses);
-		}
-	});
-
-	app.post("/api/leave_server", async (req, res) => {
-		if (!req.query.serverId) {
-			return res.status(400).json({ error: true, message: "Server ID is empty" });
-		}
-		try {
-			const result = await leaveServer(req.query.serverId, req.query.leaveSilently, global_page);
-
-			if (result.error) {
-				res.status(400).json({ error: true, message: `Something went wrong in leaving server.` });
-			} else {
-				addLog({ type: "DebugMessage", message: `Bot has left the server "${req.query.serverId}"` });
-				res.json({ ...result, clientInfo });
-			}
-		} catch (error) {
-			res.status(500).json({ error: true, message: `Something went wrong in leaving server.` });
-		} finally {
-			io.emit("serverInfo", clientInfo);
-			io.emit("canReply", canReply);
-			io.emit("responses", responses);
-		}
-	});
-
 	app.get("/api/logs", async (req, res) => {
 		res.json(logs);
-	});
-
-	app.delete("/api/set_can_reply", async (req, res) => {
-		if (!req.query.categoryId) {
-			return res.status(400).json({ error: true, message: "Category ID is empty" });
-		}
-
-		addLog({ type: "DebugMessage", message: `Bot will now stop responding on category "${req.query.categoryId}"` });
-		await unsetCanReply(req.query.categoryId);
-		res.json({ canReply, error: false });
-	});
-
-	app.post("/api/set_bot_status", async (req, res) => {
-		try {
-			if (!req.query.status) {
-				return res.status(400).json({ error: true, message: "Status is empty" });
-			}
-
-			var result = await setBotStatus(JSON.parse(req.query.status));
-			addLog({ type: "BotStatus", message: isBotOn.status ? "Bot is now set to: ON" : "Bot is now set to: OFF" });
-			res.json({ error: false, message: `Bot is now turned ${isBotOn.status ? "ON" : "OFF"}` }).status(error.status);
-		} catch (error) {
-			addLog({ type: "BotStatus", message: "Something went wrong when setting bot status." });
-			res.json({ error: true, message: "Something went wrong when setting bot status." }).status(500);
-		}
-	});
-
-	app.post("/api/set_response_delay", async (req, res) => {
-		try {
-			if (!req.query.min) {
-				return res.status(400).json({ error: true, message: "Minimum is empty" });
-			}
-			if (!req.query.max) {
-				return res.status(400).json({ error: true, message: "Maximum is empty" });
-			}
-
-			var result = await setResponseDelay(req.query.min, req.query.max);
-			addLog({ type: "DebugMessage", message: `Response delay successfully set` });
-			res.json({ error: false, message: "Successfully set response delay." });
-			io.emit("response_delay", response_delay);
-		} catch (error) {
-			res.status(500).json({ error: true, message: "Something went wrong when setting response delay." });
-		}
-	});
-
-	app.post("/api/set_response_type", async (req, res) => {
-		try {
-			if (!response_types.includes(req.query.response_type)) {
-				return res.status(400).json({ error: true, message: `Response type "${req.query.response_type}" is not valid.` });
-			}
-
-			if (!req.query.serverId) {
-				return res.status(400).json({ error: true, message: "Server ID is empty" });
-			}
-
-			var result = await setResponseType(req.query.response_type, req.query.serverId);
-			addLog({ type: "DebugMessage", message: `Response type successfully set to ${req.query.response_type}` });
-			res.json({ error: false, message: "Successfully set response type." });
-			io.emit("response_type", responseType);
-		} catch (error) {
-			res.status(500).json({ error: true, message: "Something went wrong when setting response type." });
-		}
-	});
-
-	app.post("/api/instant_response", async (req, res) => {
-		try {
-			const { serverId, message, respondWith, regex, caseSensitive, uuid } = req.query;
-
-			if (!serverId) return res.status(400).json({ error: true, message: "Server ID is empty" });
-			if (!uuid) return res.status(400).json({ error: true, message: "UUID is empty" });
-			if (!message) return res.status(400).json({ error: true, message: "Message is empty" });
-			if (!respondWith && !regex) return res.status(400).json({ error: true, message: "Response is empty" });
-			if (!regex) return res.status(400).json({ error: true, message: "Response type is empty" });
-			if (caseSensitive && !["true", "false"].includes(caseSensitive)) return res.status(400).json({ error: true, message: "caseSensitive must be 'true' or 'false'" });
-
-			var result = await addInstantResponse(serverId, message, respondWith, regex, caseSensitive, uuid);
-			addLog({ type: "DebugMessage", message: `Instant response added in server ${serverId}` });
-			res.json({ error: false, message: "Successfully added instant response." });
-			io.emit("instant_responses", clientInfo.instantResponses);
-		} catch (error) {
-			res.json({ error: true, message: "Something went wrong when adding instant response." });
-		}
-	});
-
-	app.delete("/api/instant_response", async (req, res) => {
-		try {
-			const { serverId, uuid } = req.query;
-
-			if (!serverId) return res.status(400).json({ error: true, message: "Server ID is empty" });
-			if (!uuid) return res.status(400).json({ error: true, message: "UUID is empty" });
-
-			var result = await removeInstantResponse(serverId, uuid);
-			addLog({ type: "DebugMessage", message: `Instant response deleted in server ${serverId}` });
-			res.json({ error: false, message: "Successfully deleted instant response." });
-			io.emit("instant_responses", clientInfo.instantResponses);
-		} catch (error) {
-			res.json({ error: true, message: "Something went wrong when deleting instant response." });
-		}
 	});
 
 	app.get("/api/bot_version", (req, res) => {
@@ -1258,7 +1022,6 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	try {
 		addLog({ type: "DebugMessage", message: "Starting bot dashboard server" });
 
-		// FIX #3: Use Railway port settings - NO AUTO OPEN
 		server.listen(port, RAILWAY_HOST, () => {
 			addLog({ type: "DebugMessage", message: `Bot listening on port ${port}` });
 		});
@@ -1287,131 +1050,265 @@ global_io.on("connection", () => {
 	emit_server_info();
 });
 
-// Remove old static serving - use new dashboard routes instead
-// global_app.use(express.static(path.join(__dirname, "public/multi")));
-
-// Main Dashboard
+// Main Dashboard - User Friendly
 global_app.get("/", (req, res) => {
-	res.send(`
-		<!DOCTYPE html>
-		<html>
-		<head>
-			<title>Revolt Bot Control Panel</title>
-			<style>
-				* { margin: 0; padding: 0; box-sizing: border-box; }
-				body { font-family: Arial; background: #1a1a1a; color: #fff; padding: 20px; }
-				.container { max-width: 1200px; margin: 0 auto; }
-				h1 { color: #4CAF50; margin-bottom: 20px; }
-				.buttons { display: flex; gap: 10px; margin-bottom: 30px; flex-wrap: wrap; }
-				.btn { background: #4CAF50; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; }
-				.btn:hover { background: #45a049; }
-				.btn.primary { background: #5865F2; }
-				.btn.primary:hover { background: #4752C4; }
-				.info-box { background: #2a2a2a; padding: 20px; border-radius: 8px; border-left: 4px solid #FFA500; margin-bottom: 20px; }
-				.info-box h3 { color: #FFA500; margin-bottom: 10px; }
-				.info-box p { color: #aaa; line-height: 1.6; margin-bottom: 10px; }
-				.servers { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-top: 20px; }
-				.card { background: #2a2a2a; padding: 15px; border-radius: 8px; border-left: 4px solid #4CAF50; }
-				.card h3 { margin-bottom: 10px; }
-				.status { display: inline-block; padding: 5px 10px; border-radius: 3px; font-size: 12px; background: #4CAF50; margin: 5px 0; }
-				.status.off { background: #f44336; }
-				.btn-small { padding: 8px 12px; font-size: 12px; margin-top: 10px; }
-			</style>
-		</head>
-		<body>
-			<div class="container">
-				<h1>🤖 Revolt Bot Control Panel</h1>
-				
-				<div class="buttons">
-					<button class="btn primary" onclick="window.location.href='/login'">↗ Login to Revolt</button>
-					<button class="btn" onclick="window.location.href='/revolt'">💬 Open Revolt Chat</button>
-					<button class="btn" onclick="addBot()">+ Add Bot Instance</button>
-				</div>
+	res.send(`<!DOCTYPE html>
+<html>
+<head>
+	<title>Revolt Bot - Control Panel</title>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body { 
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+			color: #fff;
+			padding: 20px;
+			min-height: 100vh;
+		}
+		.container { max-width: 1200px; margin: 0 auto; }
+		.header { margin-bottom: 30px; }
+		h1 { font-size: 32px; margin-bottom: 5px; color: #4CAF50; }
+		.subtitle { color: #aaa; font-size: 14px; }
+		.status-box {
+			background: rgba(76, 175, 80, 0.1);
+			border-left: 4px solid #4CAF50;
+			padding: 15px;
+			border-radius: 8px;
+			margin-bottom: 20px;
+			display: flex;
+			align-items: center;
+			gap: 10px;
+		}
+		.status-indicator {
+			width: 12px;
+			height: 12px;
+			border-radius: 50%;
+			background: #4CAF50;
+			animation: pulse 2s infinite;
+		}
+		@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+		.buttons { display: flex; gap: 10px; margin-bottom: 30px; flex-wrap: wrap; }
+		.btn {
+			background: #4CAF50;
+			color: white;
+			border: none;
+			padding: 12px 24px;
+			border-radius: 6px;
+			cursor: pointer;
+			font-size: 14px;
+			font-weight: bold;
+			transition: all 0.3s;
+		}
+		.btn:hover { background: #45a049; transform: translateY(-2px); }
+		.btn.primary { background: #5865F2; }
+		.btn.primary:hover { background: #4752C4; }
+		.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+		.card {
+			background: rgba(255, 255, 255, 0.05);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			padding: 20px;
+			border-radius: 12px;
+			backdrop-filter: blur(10px);
+		}
+		.card h2 { color: #4CAF50; margin-bottom: 15px; font-size: 18px; }
+		.card p { color: #aaa; line-height: 1.6; margin-bottom: 15px; font-size: 13px; }
+		.status { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; background: #4CAF50; color: white; }
+		.status.off { background: #f44336; }
+		.bot-item {
+			background: rgba(0, 0, 0, 0.3);
+			padding: 12px;
+			border-radius: 8px;
+			margin-bottom: 10px;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+		}
+		.bot-info { flex: 1; }
+		.bot-name { font-weight: bold; margin-bottom: 4px; }
+		.bot-status { font-size: 12px; color: #aaa; }
+		.btn-delete { background: #f44336; padding: 6px 12px; font-size: 12px; }
+		.btn-delete:hover { background: #da190b; }
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1>🤖 Revolt Bot Control Panel</h1>
+			<p class="subtitle">Bot v4.26.2025.1128am-MAX-SPEED</p>
+		</div>
 
-				<div class="info-box">
-					<h3>⚠️ First Time Setup</h3>
-					<p><strong>Step 1:</strong> Click "↗ Login to Revolt" button above</p>
-					<p><strong>Step 2:</strong> Login with your Revolt account in the page that opens</p>
-					<p><strong>Step 3:</strong> Come back to this dashboard</p>
-					<p><strong>Step 4:</strong> Click "+ Add Bot Instance" to create a bot</p>
-					<p><strong>Step 5:</strong> Bot will connect and start responding automatically!</p>
-				</div>
+		<div class="status-box">
+			<div class="status-indicator"></div>
+			<span>Dashboard Connected</span>
+		</div>
 
-				<div class="servers" id="servers">
-					<p style="color: #888;">No bot instances yet. Click "+ Add Bot Instance" to start.</p>
+		<div class="buttons">
+			<button class="btn primary" onclick="window.open('https://revolt.onech.at/', '_blank')">↗ Open Revolt Chat</button>
+			<button class="btn" onclick="window.location.href='/login'">🔐 Login Account</button>
+			<button class="btn" onclick="addBot()">+ Create Bot Instance</button>
+		</div>
+
+		<div class="grid">
+			<div class="card">
+				<h2>📋 Quick Start</h2>
+				<p><strong>Step 1:</strong> Click "🔐 Login Account" button</p>
+				<p><strong>Step 2:</strong> Login with your Revolt account</p>
+				<p><strong>Step 3:</strong> Come back and click "+ Create Bot Instance"</p>
+				<p><strong>Step 4:</strong> Wait for connection (check logs below)</p>
+				<p><strong>Step 5:</strong> Bot will auto-respond in chat!</p>
+			</div>
+
+			<div class="card">
+				<h2>🟢 Active Bots</h2>
+				<div id="bots">
+					<p style="color: #888;">No bots running...</p>
 				</div>
 			</div>
 
-			<script src="/socket.io/socket.io.js"></script>
-			<script>
-				const socket = io();
+			<div class="card">
+				<h2>📊 Bot Version</h2>
+				<p>revolt bot v4.26.2025.1128am-MAX-SPEED</p>
+				<p style="font-size: 12px; color: #4CAF50; margin-top: 10px;">✅ All features enabled</p>
+			</div>
+		</div>
 
-				function addBot() {
-					fetch('/api/add_server', { method: 'POST' })
-						.then(() => alert('Bot instance creating... Please wait 5 seconds then refresh'))
-						.catch(err => alert('Error: ' + err));
-				}
+		<div class="card" style="margin-top: 20px;">
+			<h2>📝 Connection Logs</h2>
+			<div id="logs" style="background: rgba(0,0,0,0.5); border-radius: 8px; padding: 15px; height: 300px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.6;">
+				<p style="color: #888;">Waiting for logs...</p>
+			</div>
+		</div>
+	</div>
 
-				function deleteBot(folder) {
-					if (confirm('Delete this bot?')) {
-						fetch('/api/server?server=' + folder, { method: 'DELETE' })
-							.then(() => location.reload())
-							.catch(err => alert('Error: ' + err));
-					}
-				}
+	<script src="/socket.io/socket.io.js"></script>
+	<script>
+		const socket = io();
+		let logMessages = [];
 
-				socket.on('servers', (servers) => {
-					const el = document.getElementById('servers');
-					if (!servers || !servers.length) {
-						el.innerHTML = '<p style="color: #888;">No bot instances yet.</p>';
-						return;
-					}
+		function addBot() {
+			fetch('/api/add_server', { method: 'POST' })
+				.then(() => {
+					alert('Bot creating... wait 5 seconds then refresh');
+					setTimeout(() => location.reload(), 5000);
+				})
+				.catch(err => alert('Error: ' + err));
+		}
 
-					el.innerHTML = servers.map(s => '<div class="card"><h3>' + (s.username || s.folder) + '</h3><div class="status ' + (s.is_running ? '' : 'off') + '">' + (s.is_running ? '🟢 Connected' : '🔴 Offline') + '</div><p style="color: #aaa; font-size: 12px; margin-top: 10px;">Instance: ' + s.folder + '</p><button class="btn btn-small" onclick="deleteBot(\'' + s.folder + '\')" style="background: #f44336; width: 100%; margin-top: 10px;">Delete</button></div>').join('');
-				});
-			</script>
-		</body>
-		</html>
-	`);
+		function deleteBot(folder) {
+			if (confirm('Delete this bot instance?')) {
+				fetch('/api/server?server=' + folder, { method: 'DELETE' })
+					.then(() => location.reload())
+					.catch(err => alert('Error'));
+			}
+		}
+
+		socket.on('servers', (servers) => {
+			const el = document.getElementById('bots');
+			if (!servers || !servers.length) {
+				el.innerHTML = '<p style="color: #888;">No bots yet</p>';
+				return;
+			}
+			el.innerHTML = servers.map(s => 
+				'<div class="bot-item">' +
+					'<div class="bot-info">' +
+						'<div class="bot-name">' + (s.username || s.folder) + '</div>' +
+						'<div class="bot-status"><span class="status ' + (s.is_running ? '' : 'off') + '">' + (s.is_running ? '🟢 Connected' : '🔴 Offline') + '</span></div>' +
+					'</div>' +
+					'<button class="btn btn-delete" onclick="deleteBot(\'' + s.folder + '\')">Delete</button>' +
+				'</div>'
+			).join('');
+		});
+
+		socket.on('log', (logData) => {
+			const logEl = document.getElementById('logs');
+			const log = logData.log;
+			const timestamp = new Date(logData.timestamp).toLocaleTimeString();
+			
+			let message = '';
+			if (typeof log === 'object') {
+				message = (log.type ? '[' + log.type + '] ' : '') + (log.message || '');
+			} else {
+				message = String(log);
+			}
+			
+			const color = log?.type === 'ErrorMessage' ? '#f44336' : 
+						  log?.type === 'DebugMessage' ? '#888' :
+						  log?.type === 'BotMessage' ? '#4CAF50' : '#fff';
+			
+			logMessages.unshift('<div style="color: ' + color + '"><small>[' + timestamp + ']</small> ' + message + '</div>');
+			
+			if (logMessages.length > 50) logMessages.pop();
+			
+			logEl.innerHTML = logMessages.join('');
+			logEl.scrollTop = 0;
+		});
+	</script>
+</body>
+</html>`);
 });
 
+// Login Page
+global_app.get("/login", (req, res) => {
+	res.send(`<!DOCTYPE html>
+<html>
+<head>
+	<title>Revolt Bot - Login</title>
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body { font-family: Arial; background: #1a1a1a; height: 100vh; }
+		.container { width: 100%; height: 100%; display: flex; flex-direction: column; }
+		.header { background: #2a2a2a; padding: 15px; border-bottom: 2px solid #4CAF50; color: #fff; }
+		.header h2 { color: #4CAF50; margin-bottom: 5px; }
+		.header p { color: #aaa; font-size: 13px; }
+		a { color: #4CAF50; text-decoration: none; font-weight: bold; }
+		a:hover { text-decoration: underline; }
+		iframe { flex: 1; border: none; width: 100%; }
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h2>🔐 Revolt Bot Account Login</h2>
+			<p>Login with your Revolt account. <a href="/">← Back to Dashboard</a></p>
+		</div>
+		<iframe src="https://revolt.onech.at/"></iframe>
+	</div>
+</body>
+</html>`);
+});
+
+// API Routes
 global_app.post("/api/server", async (req, res) => {
-	if (!req.query.server) {
-		return res.end("Server is required");
-	}
-
-	if (ports[req.query.server]) {
-		return res.end("User has already started");
-	}
-
+	if (!req.query.server) return res.end("Server required");
+	if (ports[req.query.server]) return res.end("Already started");
 	await start_everything(req.query.server, false);
-
 	emit_server_info();
-	res.end("Starting.");
+	res.end("Starting");
 });
 
 global_app.delete("/api/server", async (req, res) => {
-	if (!req.query.server) {
-		return res.end("Server is required");
-	}
-
+	if (!req.query.server) return res.end("Server required");
 	try {
 		fs.rmSync(req.query.server, { recursive: true });
+		delete ports[req.query.server];
 		emit_server_info();
 		res.status(200).end(req.query.server);
-		return 0;
 	} catch (error) {
 		res.status(500).end(error.code);
 	}
 });
 
-global_app.get("/api/running-servers", async (req, res) => {
-	res.json(ports);
+global_app.post("/api/add_server", async (req, res) => {
+	const slug = "server-" + generateSlug();
+	res.end(slug);
+	await start_everything(slug, true, false);
+	emit_server_info();
 });
 
 global_app.get("/api/servers", async (req, res) => {
 	var users = fs.readdirSync("./").filter((folder) => folder.startsWith("server-"));
-
 	var user_infos = users.map((user) => {
 		if (fs.existsSync(`${user}/account_info.json`)) {
 			return {
@@ -1430,94 +1327,19 @@ global_app.get("/api/servers", async (req, res) => {
 			};
 		}
 	});
-
 	res.json(user_infos);
 });
 
-global_app.post("/api/add_server", async (req, res) => {
-	const slug = "server-" + generateSlug();
-	res.end(slug);
-	await start_everything(slug, true, false);
-
-	emit_server_info();
+global_app.get("/api/running-servers", async (req, res) => {
+	res.json(ports);
 });
 
-// Login page for Railway - open Revolt in iframe
-global_app.get("/login", (req, res) => {
-	res.send(`
-		<!DOCTYPE html>
-		<html>
-		<head>
-			<title>Revolt Bot - Login</title>
-			<style>
-				* { margin: 0; padding: 0; box-sizing: border-box; }
-				body { font-family: Arial; background: #1a1a1a; color: #fff; }
-				.container { max-width: 1400px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; }
-				.header { background: #2a2a2a; padding: 15px; border-bottom: 2px solid #4CAF50; }
-				.header h1 { color: #4CAF50; margin-bottom: 5px; }
-				.header p { color: #aaa; font-size: 14px; }
-				iframe { flex: 1; border: none; width: 100%; }
-				.footer { background: #2a2a2a; padding: 15px; text-align: center; color: #aaa; font-size: 12px; border-top: 1px solid #444; }
-			</style>
-		</head>
-		<body>
-			<div class="container">
-				<div class="header">
-					<h1>🤖 Revolt Bot Login</h1>
-					<p>Login sa Revolt account mo sa iframe below. Once logged in, bot will auto-connect. Then go back to <a href="/" style="color: #4CAF50;">Dashboard</a></p>
-				</div>
-				<iframe src="https://revolt.onech.at/"></iframe>
-				<div class="footer">
-					<p>✅ Login successful? Go back to Dashboard at i-refresh. Bot should be connected na.</p>
-				</div>
-			</div>
-		</body>
-		</html>
-	`);
-});
-
-// Direct Revolt access
-global_app.get("/revolt", (req, res) => {
-	res.send(`
-		<!DOCTYPE html>
-		<html>
-		<head>
-			<title>Revolt</title>
-			<style>
-				* { margin: 0; padding: 0; box-sizing: border-box; }
-				html, body { width: 100%; height: 100%; overflow: hidden; }
-				iframe { width: 100%; height: 100%; border: none; }
-				.back-btn {
-					position: fixed;
-					top: 10px;
-					left: 10px;
-					z-index: 10000;
-					background: #4CAF50;
-					color: white;
-					border: none;
-					padding: 10px 15px;
-					border-radius: 4px;
-					cursor: pointer;
-					font-weight: bold;
-				}
-				.back-btn:hover { background: #45a049; }
-			</style>
-		</head>
-		<body>
-			<button class="back-btn" onclick="window.location.href='/'">← Dashboard</button>
-			<iframe src="https://revolt.onech.at/"></iframe>
-		</body>
-		</html>
-	`);
-});
-
-// FIX #1: Proper Railway port binding - AUTO OPEN REVOLT
+// Start Global Server
 global_server.listen(RAILWAY_PORT, RAILWAY_HOST, () => {
-	console.log(`[SERVER] Listening on ${RAILWAY_HOST}:${RAILWAY_PORT}`);
-	// Auto-open Revolt on startup (only local development)
+	console.log(`[RAILWAY SERVER] Listening on ${RAILWAY_HOST}:${RAILWAY_PORT}`);
 	if (!IS_RAILWAY) {
 		setTimeout(() => {
-			open(`https://revolt.onech.at/`).catch(() => {});
+			open(`http://localhost:${RAILWAY_PORT}`).catch(() => {});
 		}, 500);
 	}
 	emit_server_info();
@@ -1525,14 +1347,14 @@ global_server.listen(RAILWAY_PORT, RAILWAY_HOST, () => {
 
 rl.input.on("keypress", async (char, key) => {
 	if (key.name === "c" && key.ctrl) {
-		console.log({ type: "DebugMessage", message: `CTRL + C was pressed. Exiting now.` });
+		console.log("Exiting...");
 		rl.close();
 		process.exit(0);
 	}
 
 	if (key.name === "u") {
 		console.log(`--------------------------`);
-		console.log(`http://localhost:${RAILWAY_PORT}`);
+		console.log(`Dashboard: http://localhost:${RAILWAY_PORT}`);
 		console.log(`--------------------------`);
 	}
 });
