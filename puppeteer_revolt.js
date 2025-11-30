@@ -1258,12 +1258,9 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	try {
 		addLog({ type: "DebugMessage", message: "Starting bot dashboard server" });
 
-		// FIX #3: Use Railway port settings
+		// FIX #3: Use Railway port settings - NO AUTO OPEN
 		server.listen(port, RAILWAY_HOST, () => {
-			if (!IS_RAILWAY) {
-				open(`http://localhost:${port}`);
-			}
-			addLog({ type: "DebugMessage", message: `Now listening to: http://${RAILWAY_HOST}:${port}` });
+			addLog({ type: "DebugMessage", message: `Bot listening on port ${port}` });
 		});
 	} catch (error) {
 		if (error.code == "ERR_SERVER_ALREADY_LISTEN") {
@@ -1359,11 +1356,14 @@ global_app.post("/api/add_server", async (req, res) => {
 	emit_server_info();
 });
 
-// FIX #1: Proper Railway port binding
+// FIX #1: Proper Railway port binding - AUTO OPEN REVOLT
 global_server.listen(RAILWAY_PORT, RAILWAY_HOST, () => {
 	console.log(`[SERVER] Listening on ${RAILWAY_HOST}:${RAILWAY_PORT}`);
+	// Auto-open Revolt on startup (only local development)
 	if (!IS_RAILWAY) {
-		open(`http://localhost:${RAILWAY_PORT}`);
+		setTimeout(() => {
+			open(`https://revolt.onech.at/`).catch(() => {});
+		}, 500);
 	}
 	emit_server_info();
 });
