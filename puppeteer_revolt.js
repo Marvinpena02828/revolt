@@ -221,6 +221,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		alreadyResponded: "already_responded.txt",
 		responseType: "response_type.json",
 		instantResponses: "instant_responses.json",
+		serverConfigs: "server_configs.json",
 	};
 
 	const response_types = ["PREDEFINED", "PARSED_NUMBER"];
@@ -231,7 +232,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 
 	const initialValues = {
 		responses: {
-			// Auto-claim keywords for channel matching
+			// Auto-claim keywords for channel matching (global)
 			"_keywords": ["reward", "claim", "nitro", "drop", "giveaway", "bonus", "gift", "free", "code", "ticket", "promo", "raffle", "sweepstakes"],
 		},
 		canReply: [],
@@ -239,6 +240,11 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		isBotOn: { status: true },
 		alreadyResponded: "",
 		responseType: {},
+		// Per-server configurations for custom responses
+		serverConfigs: {
+			// Example: "SERVER_ID_1": { command: "/claim 1", response: "Ticket: {number}" }
+			// Users can configure per server via API
+		},
 		// Pre-configured instant responses for common triggers
 		instantResponses: {
 			"_default": {
@@ -267,6 +273,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	var isBotOn = JSON.parse(fs.readFileSync(`./${IDENTIFIER_USER}/is_bot_on.json`).toString());
 	var responseType = JSON.parse(fs.readFileSync(`./${IDENTIFIER_USER}/response_type.json`).toString());
 	var instantResponses = JSON.parse(fs.readFileSync(`./${IDENTIFIER_USER}/instant_responses.json`).toString());
+	var serverConfigs = JSON.parse(fs.readFileSync(`./${IDENTIFIER_USER}/server_configs.json`).toString());
 	var token = "";
 	var error = 0;
 
@@ -341,6 +348,16 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		var canReply = await getCanReply(category ? category.id : null, channel?.name, server?._id);
 
 		if (canReply.canReply) {
+			// Priority 1: Check per-server configuration
+			const serverConfig = serverConfigs[server._id];
+			if (serverConfig && msg?.content?.includes(serverConfig.command)) {
+				const response = serverConfig.responseTemplate;
+				await sendMessageDirect(msg?.channel, response);
+				addLog({ type: "BotMessage", message: `⚡ Server-specific response sent` });
+				return;
+			}
+			
+			// Priority 2: Check instant responses
 			var instantResponse = await getInstantResponse(msg?.content, server._id, channel?.name);
 
 			if (instantResponse.found) {
@@ -1026,7 +1043,30 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	app.get("/api/servers", (req, res) => {
 		clientInfo.canReply = canReply;
 		clientInfo.responses = responses;
+		clientInfo.serverConfigs = serverConfigs;
 		res.json(clientInfo);
+	});
+
+	// Set per-server configuration (command + response template)
+	app.post("/api/server_config", async (req, res) => {
+		const serverId = req.query.serverId;
+		const command = req.query.command;  // e.g., "/claim 1"
+		const responseTemplate = req.query.response;  // e.g., "Ticket: {number}"
+		
+		if (!serverId || !command || !responseTemplate) {
+			return res.status(400).json({ error: true, message: "serverId, command, response required" });
+		}
+		
+		serverConfigs[serverId] = { command, responseTemplate };
+		fs.writeFileSync(`./${IDENTIFIER_USER}/server_configs.json`, JSON.stringify(serverConfigs, null, 2));
+		addLog({ type: "DebugMessage", message: `📋 Server ${serverId}: ${command} → ${responseTemplate}` });
+		res.json({ error: false, config: serverConfigs[serverId] });
+	});
+
+	// Get per-server configurations
+	app.get("/api/server_config/:serverId", (req, res) => {
+		const config = serverConfigs[req.params.serverId] || null;
+		res.json({ config });
 	});
 
 	app.post("/api/set_response", async (req, res) => {
@@ -1135,6 +1175,65 @@ global_app.get("/", (req, res) => {
 			animation: pulse 2s infinite;
 		}
 		@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+		.server-item {
+			background: rgba(0, 0, 0, 0.3);
+			padding: 15px;
+			border-radius: 8px;
+			margin-bottom: 15px;
+			border-left: 4px solid #5865F2;
+		}
+		.server-name { font-weight: bold; margin-bottom: 10px; color: #4CAF50; }
+		.config-form {
+			display: grid;
+			gap: 10px;
+			margin-top: 10px;
+		}
+		.form-group {
+			display: flex;
+			flex-direction: column;
+			gap: 5px;
+		}
+		.form-group label {
+			font-size: 12px;
+			color: #aaa;
+			font-weight: bold;
+		}
+		.form-group input {
+			background: rgba(0, 0, 0, 0.5);
+			border: 1px solid #444;
+			color: #fff;
+			padding: 8px 12px;
+			border-radius: 4px;
+			font-size: 12px;
+		}
+		.form-group input:focus {
+			outline: none;
+			border-color: #4CAF50;
+			box-shadow: 0 0 5px rgba(76, 175, 80, 0.3);
+		}
+		.btn-save {
+			background: #4CAF50;
+			padding: 8px 16px;
+			font-size: 12px;
+			margin-top: 10px;
+		}
+		.btn-save:hover { background: #45a049; }
+		.btn-clear { background: #666; padding: 8px 16px; font-size: 12px; }
+		.btn-clear:hover { background: #888; }
+		.config-status {
+			font-size: 12px;
+			color: #aaa;
+			margin-top: 10px;
+			padding: 10px;
+			background: rgba(76, 175, 80, 0.1);
+			border-radius: 4px;
+			border-left: 3px solid #4CAF50;
+		}
+		.config-status.error {
+			background: rgba(244, 67, 54, 0.1);
+			border-left-color: #f44336;
+			color: #f44336;
+		}
 		.buttons { display: flex; gap: 10px; margin-bottom: 30px; flex-wrap: wrap; }
 		.btn {
 			background: #4CAF50;
@@ -1203,7 +1302,7 @@ global_app.get("/", (req, res) => {
 				<p><strong>Step 2:</strong> Login with your Revolt account</p>
 				<p><strong>Step 3:</strong> Come back and click "+ Create Bot Instance"</p>
 				<p><strong>Step 4:</strong> Wait for connection (check logs below)</p>
-				<p><strong>Step 5:</strong> Bot will auto-respond in chat!</p>
+				<p><strong>Step 5:</strong> Configure servers & responses!</p>
 			</div>
 
 			<div class="card">
@@ -1217,6 +1316,13 @@ global_app.get("/", (req, res) => {
 				<h2>📊 Bot Version</h2>
 				<p>revolt bot v4.26.2025.1128am-MAX-SPEED</p>
 				<p style="font-size: 12px; color: #4CAF50; margin-top: 10px;">✅ All features enabled</p>
+			</div>
+		</div>
+
+		<div class="card" style="margin-top: 20px;">
+			<h2>⚙️ Server Configuration</h2>
+			<div id="serverConfigPanel">
+				<p style="color: #888;">Create a bot instance first to see servers</p>
 			</div>
 		</div>
 
@@ -1250,10 +1356,13 @@ global_app.get("/", (req, res) => {
 			}
 		}
 
+		let botServers = [];
+
 		socket.on('servers', (servers) => {
 			const el = document.getElementById('bots');
 			if (!servers || !servers.length) {
 				el.innerHTML = '<p style="color: #888;">No bots yet</p>';
+				document.getElementById('serverConfigPanel').innerHTML = '<p style="color: #888;">Create a bot instance first</p>';
 				return;
 			}
 			el.innerHTML = servers.map(s => {
@@ -1266,7 +1375,99 @@ global_app.get("/", (req, res) => {
 					deleteBtn +
 				'</div>';
 			}).join('');
+
+			// Load bot server info to get servers
+			if (servers[0] && servers[0].is_running) {
+				fetch('/api/servers')
+					.then(r => r.json())
+					.then(data => {
+						botServers = data.servers || [];
+						loadServerConfigs();
+					})
+					.catch(() => {});
+			}
 		});
+
+		function loadServerConfigs() {
+			const panel = document.getElementById('serverConfigPanel');
+			if (!botServers || botServers.length === 0) {
+				panel.innerHTML = '<p style="color: #888;">No servers available. Bot needs to connect to servers first.</p>';
+				return;
+			}
+
+			let html = '';
+			botServers.forEach(server => {
+				html += '<div class="server-item">' +
+					'<div class="server-name">🔹 ' + (server.name || server._id) + '</div>' +
+					'<div class="config-form">' +
+						'<div class="form-group">' +
+							'<label>Claim Command (e.g., /claim 1, click here)</label>' +
+							'<input type="text" id="cmd_' + server._id + '" placeholder="e.g., /claim 1" style="width: 100%;">' +
+						'</div>' +
+						'<div class="form-group">' +
+							'<label>Response Template (e.g., Ticket: 12345)</label>' +
+							'<input type="text" id="resp_' + server._id + '" placeholder="e.g., Ticket: 12345" style="width: 100%;">' +
+						'</div>' +
+						'<div style="display: flex; gap: 10px; margin-top: 10px;">' +
+							'<button class="btn btn-save" onclick="saveServerConfig(\'' + server._id + '\')">💾 Save Config</button>' +
+							'<button class="btn btn-clear" onclick="clearServerConfig(\'' + server._id + '\')">🗑️ Clear</button>' +
+						'</div>' +
+						'<div id="status_' + server._id + '" class="config-status" style="display:none;"></div>' +
+					'</div>' +
+				'</div>';
+			});
+
+			panel.innerHTML = html;
+
+			// Load existing configs
+			botServers.forEach(server => {
+				fetch('/api/server_config/' + server._id)
+					.then(r => r.json())
+					.then(data => {
+						if (data.config) {
+							document.getElementById('cmd_' + server._id).value = data.config.command || '';
+							document.getElementById('resp_' + server._id).value = data.config.responseTemplate || '';
+						}
+					})
+					.catch(() => {});
+			});
+		}
+
+		function saveServerConfig(serverId) {
+			const cmd = document.getElementById('cmd_' + serverId).value.trim();
+			const resp = document.getElementById('resp_' + serverId).value.trim();
+			const statusEl = document.getElementById('status_' + serverId);
+
+			if (!cmd || !resp) {
+				statusEl.className = 'config-status error';
+				statusEl.textContent = '❌ Command and Response are required';
+				statusEl.style.display = 'block';
+				return;
+			}
+
+			fetch('/api/server_config?serverId=' + serverId + '&command=' + encodeURIComponent(cmd) + '&response=' + encodeURIComponent(resp), { method: 'POST' })
+				.then(r => r.json())
+				.then(data => {
+					if (!data.error) {
+						statusEl.className = 'config-status';
+						statusEl.textContent = '✅ Config saved successfully! Command: "' + cmd + '" will respond with: "' + resp + '"';
+						statusEl.style.display = 'block';
+					} else {
+						throw new Error('Save failed');
+					}
+				})
+				.catch(err => {
+					statusEl.className = 'config-status error';
+					statusEl.textContent = '❌ Error: ' + err.message;
+					statusEl.style.display = 'block';
+				});
+		}
+
+		function clearServerConfig(serverId) {
+			document.getElementById('cmd_' + serverId).value = '';
+			document.getElementById('resp_' + serverId).value = '';
+			document.getElementById('status_' + serverId).style.display = 'none';
+		}
 
 		socket.on('log', (logData) => {
 			const logEl = document.getElementById('logs');
