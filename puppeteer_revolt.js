@@ -1366,7 +1366,7 @@ global_app.get("/", (req, res) => {
 				return;
 			}
 			el.innerHTML = servers.map(s => {
-				const deleteBtn = '<button class="btn btn-delete" onclick="deleteBot(' + "'" + s.folder + "'" + ')">Delete</button>';
+				const deleteBtn = '<button class="btn btn-delete" onclick="deleteBot('${s.folder}')">Delete</button>';
 				return '<div class="bot-item">' +
 					'<div class="bot-info">' +
 						'<div class="bot-name">' + (s.username || s.folder) + '</div>' +
