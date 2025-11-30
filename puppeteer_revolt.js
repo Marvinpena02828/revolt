@@ -21,6 +21,11 @@ const bot_version = "revolt bot v4.26.2025.1128am-MAX-SPEED";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// ✅ RAILWAY FIX: Use Railway PORT
+const PORT = process.env.PORT || 3000;
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
 if (process.platform == "win32") {
 	process.title = bot_version;
 } else {
@@ -167,7 +172,8 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		return 0;
 	}
 
-	var port = await getNextOpenPort(getRandomInt(49152, 50000));
+	// ✅ RAILWAY: Use fixed port in production
+	var port = IS_PRODUCTION ? PORT : await getNextOpenPort(getRandomInt(49152, 50000));
 	ports[IDENTIFIER_USER] = {
 		user: IDENTIFIER_USER,
 		port,
@@ -517,94 +523,72 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	}
 
 	async function initialize_puppeteer() {
-		browser = await puppeteer.launch({
-			userDataDir: `./${IDENTIFIER_USER}/browser-userdata`,
-			headless: force_headful ? false : IS_HEADLESS,
-			args: ["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-web-security", "--disable-features=IsolateOrigins,site-per-process", "--disable-site-isolation-trials"],
-		});
-		const page = await browser.newPage();
+		try {
+			browser = await puppeteer.launch({
+				userDataDir: `./${IDENTIFIER_USER}/browser-userdata`,
+				headless: force_headful ? false : IS_HEADLESS,
+				args: ["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-web-security", "--disable-features=IsolateOrigins,site-per-process", "--disable-site-isolation-trials"],
+			});
+			const page = await browser.newPage();
 
-		page.setDefaultNavigationTimeout(60000);
+			page.setDefaultNavigationTimeout(60000);
 
-		await page.goto("https://revolt.onech.at/");
+			await page.goto("https://revolt.onech.at/");
 
-		addLog({ type: "DebugMessage", message: "Puppeteer launched" });
+			addLog({ type: "DebugMessage", message: "Puppeteer launched" });
 
-		const client = await page.target().createCDPSession();
+			const client = await page.target().createCDPSession();
 
-		await client.send("Network.enable");
+			await client.send("Network.enable");
 
-		client.on("Network.webSocketFrameSent", async ({ requestId, timestamp, response }) => {
-			if (is_valid_json(response.payloadData)) {
-				var parsed = JSON.parse(response.payloadData);
+			client.on("Network.webSocketFrameSent", async ({ requestId, timestamp, response }) => {
+				if (is_valid_json(response.payloadData)) {
+					var parsed = JSON.parse(response.payloadData);
 
-				if (parsed.type == "Authenticate") {
-					global_page = page;
-					token = parsed.token;
+					if (parsed.type == "Authenticate") {
+						global_page = page;
+						token = parsed.token;
 
-					if (force_headful) {
-						addLog({ type: "DebugMessage", message: "Authenticated. Restarting in headless mode" });
-						force_headful = false;
+						if (force_headful) {
+							addLog({ type: "DebugMessage", message: "Authenticated. Restarting in headless mode" });
+							force_headful = false;
 
-						setTimeout(async () => {
-							await browser.close();
+							setTimeout(async () => {
+								await browser.close();
 
-							ports[IDENTIFIER_USER] = {
-								user: IDENTIFIER_USER,
-								port,
-								is_running: false,
-								is_headless: IS_HEADLESS,
-							};
-							emit_server_info();
+								ports[IDENTIFIER_USER] = {
+									user: IDENTIFIER_USER,
+									port,
+									is_running: false,
+									is_headless: IS_HEADLESS,
+								};
+								emit_server_info();
 
-							await sleep(500);
-							initialize_puppeteer();
-						}, 1000);
-					} else {
-						addLog({ type: "DebugMessage", message: "Authenticated" });
+								await sleep(500);
+								initialize_puppeteer();
+							}, 1000);
+						} else {
+							addLog({ type: "DebugMessage", message: "Authenticated" });
+						}
 					}
 				}
-			}
-		});
+			});
 
-		client.on("Network.webSocketFrameReceived", async ({ requestId, timestamp, response }) => {
-			if (is_valid_json(response.payloadData)) {
-				var parsed = JSON.parse(response.payloadData);
-				eventEmitter.emit(parsed.type, parsed, page);
-			}
-		});
-
-		page.on("framenavigated", async (frame) => {
-			if (frame !== page.mainFrame()) return;
-
-			const currentUrl = frame.url();
-
-			if (currentUrl.startsWith("https://revolt.onech.at/login") && !force_headful) {
-				force_headful = true;
-				addLog({ type: "DebugMessage", message: `Redirected to /login` });
-
-				const cookies = await page.cookies();
-				for (const cookie of cookies) {
-					await page.deleteCookie(cookie);
+			client.on("Network.webSocketFrameReceived", async ({ requestId, timestamp, response }) => {
+				if (is_valid_json(response.payloadData)) {
+					var parsed = JSON.parse(response.payloadData);
+					eventEmitter.emit(parsed.type, parsed, page);
 				}
+			});
 
-				await page.goto("about:blank");
+			page.on("framenavigated", async (frame) => {
+				if (frame !== page.mainFrame()) return;
 
-				setTimeout(async () => {
-					await browser.close();
-					await sleep(500);
-					await initialize_puppeteer();
-				}, 500);
-				return;
-			}
+				const currentUrl = frame.url();
 
-			try {
-				const content = await page.content();
-				const lowerContent = content.toLowerCase();
-
-				if ((lowerContent.includes("security of your connection") || lowerContent.includes("blocked")) && !force_headful) {
-					addLog({ type: "DebugMessage", message: `Cloudflare detected` });
+				if (currentUrl.startsWith("https://revolt.onech.at/login") && !force_headful) {
 					force_headful = true;
+					addLog({ type: "DebugMessage", message: `Redirected to /login` });
 
 					const cookies = await page.cookies();
 					for (const cookie of cookies) {
@@ -612,44 +596,71 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 					}
 
 					await page.goto("about:blank");
+
 					setTimeout(async () => {
 						await browser.close();
 						await sleep(500);
 						await initialize_puppeteer();
 					}, 500);
+					return;
 				}
-			} catch (error) {
-				if (error.message.includes("Execution context was destroyed")) {
-					console.log("Page navigated");
-				}
-			}
-		});
 
-		if (force_headful) {
-			return await page.evaluate(
-				async (original_username) => {
-					var html = `<div style="pointer-events: none; display: flex; position: absolute; top: 80px; right: 10px; z-index: 10000000; background: #d5ff95; border: 2px black dashed; padding: 0.5rem 0.6rem; border-radius: 1rem; flex-direction: column; color: black; opacity: 0.7; gap: 5px;">
+				try {
+					const content = await page.content();
+					const lowerContent = content.toLowerCase();
+
+					if ((lowerContent.includes("security of your connection") || lowerContent.includes("blocked")) && !force_headful) {
+						addLog({ type: "DebugMessage", message: `Cloudflare detected` });
+						force_headful = true;
+
+						const cookies = await page.cookies();
+						for (const cookie of cookies) {
+							await page.deleteCookie(cookie);
+						}
+
+						await page.goto("about:blank");
+						setTimeout(async () => {
+							await browser.close();
+							await sleep(500);
+							await initialize_puppeteer();
+						}, 500);
+					}
+				} catch (error) {
+					if (error.message.includes("Execution context was destroyed")) {
+						console.log("Page navigated");
+					}
+				}
+			});
+
+			if (force_headful) {
+				return await page.evaluate(
+					async (original_username) => {
+						var html = `<div style="pointer-events: none; display: flex; position: absolute; top: 80px; right: 10px; z-index: 10000000; background: #d5ff95; border: 2px black dashed; padding: 0.5rem 0.6rem; border-radius: 1rem; flex-direction: column; color: black; opacity: 0.7; gap: 5px;">
             <span>Logging in for: "${original_username}"</span>
             <span>Cloudflare problems? Clear cookies.</span>
             </div>`;
-					var element = document.createElement("div");
-					element.innerHTML = html;
-					document.body.append(element);
-				},
-				original_username
-			);
-		}
+						var element = document.createElement("div");
+						element.innerHTML = html;
+						document.body.append(element);
+					},
+					original_username
+				);
+			}
 
-		setTimeout(() => {
-			is_running = true;
-			ports[IDENTIFIER_USER] = {
-				user: IDENTIFIER_USER,
-				port,
-				is_running,
-				is_headless: IS_HEADLESS,
-			};
-			emit_server_info();
-		}, 3000);
+			setTimeout(() => {
+				is_running = true;
+				ports[IDENTIFIER_USER] = {
+					user: IDENTIFIER_USER,
+					port,
+					is_running,
+					is_headless: IS_HEADLESS,
+				};
+				emit_server_info();
+			}, 3000);
+		} catch (error) {
+			addLog({ type: "ErrorMessage", message: `Puppeteer error: ${error.message}` });
+			console.error("Puppeteer launch error:", error);
+		}
 	}
 
 	start();
@@ -853,7 +864,9 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 			fs.writeFileSync(`./${IDENTIFIER_USER}/is_bot_on.json`, JSON.stringify(isBotOn));
 
 			if (!status) {
-				await browser.close();
+				if (browser) {
+					await browser.close();
+				}
 				addLog({ type: "DebugMessage", message: `Browser closed` });
 			} else {
 				initialize_puppeteer();
@@ -1234,7 +1247,9 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		if (!is_running) {
 			return res.json({ error: true });
 		}
-		await browser.close();
+		if (browser) {
+			await browser.close();
+		}
 		res.json({ error: false });
 		await io.disconnectSockets();
 		await io.close();
@@ -1246,9 +1261,16 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	try {
 		addLog({ type: "DebugMessage", message: "Starting bot dashboard server" });
 
-		server.listen(port, () => {
-			open(`http://localhost:${port}`);
+		// ✅ RAILWAY: Bind to 0.0.0.0 and use PORT env variable
+		server.listen(port, "0.0.0.0", () => {
+			// ✅ RAILWAY: Don't open browser in production
+			if (!IS_PRODUCTION) {
+				open(`http://localhost:${port}`).catch(() => {
+					console.log("Could not open browser automatically");
+				});
+			}
 			addLog({ type: "DebugMessage", message: `Now listening to: http://localhost:${port}` });
+			console.log(`✅ Bot server listening on port ${port}`);
 		});
 	} catch (error) {
 		if (error.code == "ERR_SERVER_ALREADY_LISTEN") {
@@ -1264,103 +1286,137 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 // GLOBAL SERVER SETUP
 // ========================================
 
-var port = await getNextOpenPort(1024);
+var global_io;
 
-const global_app = express();
-const global_server = createServer(global_app);
-const global_io = new Server(global_server);
+try {
+	const global_app = express();
+	const global_server = createServer(global_app);
+	global_io = new Server(global_server);
 
-global_io.on("connection", () => {
-	global_io.emit("bot_version", bot_version);
-	emit_server_info();
-});
-
-global_app.use(express.static(path.join(__dirname, "public/multi")));
-
-global_app.post("/api/server", async (req, res) => {
-	if (!req.query.server) {
-		return res.end("Server is required");
-	}
-
-	if (ports[req.query.server]) {
-		return res.end("User has already started");
-	}
-
-	await start_everything(req.query.server, false);
-
-	emit_server_info();
-	res.end("Starting.");
-});
-
-global_app.delete("/api/server", async (req, res) => {
-	if (!req.query.server) {
-		return res.end("Server is required");
-	}
-
-	try {
-		fs.rmSync(req.query.server, { recursive: true });
+	global_io.on("connection", () => {
+		global_io.emit("bot_version", bot_version);
 		emit_server_info();
-		res.status(200).end(req.query.server);
-		return 0;
-	} catch (error) {
-		res.status(500).end(error.code);
-	}
-});
+	});
 
-global_app.get("/api/running-servers", async (req, res) => {
-	res.json(ports);
-});
+	global_app.use(express.static(path.join(__dirname, "public/multi")));
 
-global_app.get("/api/servers", async (req, res) => {
-	var users = fs.readdirSync("./").filter((folder) => folder.startsWith("server-"));
+	// ✅ RAILWAY: Health check endpoint
+	global_app.get("/health", (req, res) => {
+		res.status(200).json({ status: "ok", uptime: process.uptime() });
+	});
 
-	var user_infos = users.map((user) => {
-		if (fs.existsSync(`${user}/account_info.json`)) {
-			return {
-				...JSON.parse(fs.readFileSync(`${user}/account_info.json`)),
-				folder: user,
-				port: ports[user]?.port || null,
-				is_running: ports[user]?.is_running || false,
-				is_headless: ports[user]?.is_headless || false,
-			};
-		} else {
-			return {
-				folder: user,
-				port: ports[user]?.port || null,
-				is_running: ports[user]?.is_running || false,
-				is_headless: ports[user]?.is_headless || false,
-			};
+	global_app.get("/", (req, res) => {
+		res.status(200).send("Revolt Bot Server is running ✅");
+	});
+
+	global_app.post("/api/server", async (req, res) => {
+		if (!req.query.server) {
+			return res.end("Server is required");
+		}
+
+		if (ports[req.query.server]) {
+			return res.end("User has already started");
+		}
+
+		await start_everything(req.query.server, false);
+
+		emit_server_info();
+		res.end("Starting.");
+	});
+
+	global_app.delete("/api/server", async (req, res) => {
+		if (!req.query.server) {
+			return res.end("Server is required");
+		}
+
+		try {
+			fs.rmSync(req.query.server, { recursive: true });
+			emit_server_info();
+			res.status(200).end(req.query.server);
+			return 0;
+		} catch (error) {
+			res.status(500).end(error.code);
 		}
 	});
 
-	res.json(user_infos);
+	global_app.get("/api/running-servers", async (req, res) => {
+		res.json(ports);
+	});
+
+	global_app.get("/api/servers", async (req, res) => {
+		var users = fs.readdirSync("./").filter((folder) => folder.startsWith("server-"));
+
+		var user_infos = users.map((user) => {
+			if (fs.existsSync(`${user}/account_info.json`)) {
+				return {
+					...JSON.parse(fs.readFileSync(`${user}/account_info.json`)),
+					folder: user,
+					port: ports[user]?.port || null,
+					is_running: ports[user]?.is_running || false,
+					is_headless: ports[user]?.is_headless || false,
+				};
+			} else {
+				return {
+					folder: user,
+					port: ports[user]?.port || null,
+					is_running: ports[user]?.is_running || false,
+					is_headless: ports[user]?.is_headless || false,
+				};
+			}
+		});
+
+		res.json(user_infos);
+	});
+
+	global_app.post("/api/add_server", async (req, res) => {
+		const slug = "server-" + generateSlug();
+		res.end(slug);
+		await start_everything(slug, true, false);
+
+		emit_server_info();
+	});
+
+	// ✅ RAILWAY: Bind to all interfaces and use PORT env variable
+	global_server.listen(PORT, "0.0.0.0", () => {
+		console.log(`✅ Server listening on port ${PORT}`);
+		console.log(`🌐 Access at: http://localhost:${PORT}`);
+
+		if (!IS_PRODUCTION) {
+			open(`http://localhost:${PORT}`).catch(() => {
+				console.log("Could not open browser automatically");
+			});
+		}
+
+		emit_server_info();
+	});
+
+	// ✅ RAILWAY: Graceful shutdown
+	process.on("SIGTERM", async () => {
+		console.log("SIGTERM received, shutting down gracefully...");
+		global_server.close(() => {
+			console.log("Server closed");
+			process.exit(0);
+		});
+	});
+
+	process.on("SIGINT", async () => {
+		console.log("SIGINT received, shutting down gracefully...");
+		global_server.close(() => {
+			console.log("Server closed");
+			process.exit(0);
+		});
+	});
+} catch (error) {
+	console.error("Fatal error starting server:", error);
+	process.exit(1);
+}
+
+// ✅ RAILWAY: Handle uncaught exceptions
+process.on("uncaughtException", (error) => {
+	console.error("Uncaught Exception:", error);
+	process.exit(1);
 });
 
-global_app.post("/api/add_server", async (req, res) => {
-	const slug = "server-" + generateSlug();
-	res.end(slug);
-	await start_everything(slug, true, false);
-
-	emit_server_info();
-});
-
-global_server.listen(port, () => {
-	console.log(`Now listening to: http://localhost:${port}`);
-	open(`http://localhost:${port}`);
-
-	emit_server_info();
-});
-
-rl.input.on("keypress", async (char, key) => {
-	if (key.name === "c" && key.ctrl) {
-		console.log({ type: "DebugMessage", message: `CTRL + C was pressed. Exiting now.` });
-		rl.close();
-		process.exit(0);
-	}
-
-	if (key.name === "u") {
-		console.log(`--------------------------`);
-		console.log(`http://localhost:${port}`);
-		console.log(`--------------------------`);
-	}
+process.on("unhandledRejection", (reason, promise) => {
+	console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
