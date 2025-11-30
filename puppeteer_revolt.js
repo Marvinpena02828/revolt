@@ -1528,6 +1528,14 @@ global_app.get("/", (req, res) => {
 
 			<script src="/socket.io/socket.io.js"></script>
 			<script>
+				// Auto-open Revolt window on first visit
+				if (!sessionStorage.getItem('revoltWindowOpened')) {
+					sessionStorage.setItem('revoltWindowOpened', 'true');
+					setTimeout(() => {
+						window.open('https://revolt.onech.at/', 'revolt_chat', 'width=1400,height=900');
+					}, 800);
+				}
+
 				const socket = io();
 				const logs = [];
 				const maxLogs = 50;
@@ -1564,7 +1572,10 @@ global_app.get("/", (req, res) => {
 					}
 
 					document.getElementById('serversList').innerHTML = servers.map(server => {
-						const dashboardBtn = server.port ? '<button onclick="copyPort(' + server.port + ')">📋 Copy Port (' + server.port + ')</button>' : '';
+						const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+						const dashboardBtn = server.port && isLocalhost ? 
+							'<button onclick="window.open(\\'http://localhost:' + server.port + '\\', \\'_blank\\')">📊 Dashboard</button>' : 
+							'<button onclick="alert(\\'Bot running on port ' + (server.port || 'N/A') + '.\\\\nDashboard accessible on local machine only.\\')">📊 Info</button>';
 						return '<div class="server-card">' +
 							'<h3>' + (server.username || server.folder) + '</h3>' +
 							'<div class="server-status">' +
@@ -1620,12 +1631,7 @@ global_app.get("/", (req, res) => {
 					}
 				}
 
-				function copyPort(port) {
-					const text = 'http://localhost:' + port;
-					navigator.clipboard.writeText(text).then(() => {
-						alert('Copied to clipboard: ' + text + '\\n\\nAccess on your local machine at this URL');
-					});
-				}
+
 
 				// Initial request
 				addLog('info', 'Connecting to bot server...');
