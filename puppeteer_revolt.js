@@ -1283,7 +1283,7 @@ global_app.get("/login", (req, res) => {
 global_app.post("/api/server", async (req, res) => {
 	if (!req.query.server) return res.end("Server required");
 	if (ports[req.query.server]) return res.end("Already started");
-	await start_everything(req.query.server, false);
+	await start_everything(req.query.server, false, true);  // Added true to start immediately
 	emit_server_info();
 	res.end("Starting");
 });
@@ -1303,7 +1303,7 @@ global_app.delete("/api/server", async (req, res) => {
 global_app.post("/api/add_server", async (req, res) => {
 	const slug = "server-" + generateSlug();
 	res.end(slug);
-	await start_everything(slug, true, false);
+	await start_everything(slug, true, true);  // Changed to true so bot starts immediately
 	emit_server_info();
 });
 
