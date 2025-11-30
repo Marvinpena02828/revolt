@@ -953,7 +953,6 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 
 	// Bot Login Page - Opens in iframe
 	app.get("/login", (req, res) => {
-		const host = req.get('host');
 		res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -974,8 +973,8 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	<div class="container">
 		<div class="header">
 			<h2>🔐 Login to Revolt</h2>
-			<p>Login with your Revolt account. Once logged in, come back to the dashboard.</p>
-			<p><a href="http://${host}/">← Back to Dashboard</a></p>
+			<p>Login with your Revolt account. Once logged in, close this tab and go back to dashboard.</p>
+			<p><a href="javascript:window.close()">✕ Close Tab</a></p>
 		</div>
 		<iframe src="https://revolt.onech.at/"><\/iframe>
 	</div>
@@ -1072,12 +1071,12 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	<script>
 		const socket = io();
 		let logs = [];
-		const host = "${host}";
-		const protocol = "${protocol}";
-		const loginUrl = protocol + "://" + host + "/login";
+		const currentUrl = window.location.href;
+		const baseUrl = currentUrl.split('/').slice(0, 3).join('/'); // Get protocol + host
+		const loginUrl = baseUrl + "/login";
 
 		function openLogin() {
-			window.open(loginUrl, '_blank', 'width=800,height=600');
+			window.open(loginUrl, '_blank', 'width=900,height=700');
 		}
 
 		socket.on('connect', () => {
