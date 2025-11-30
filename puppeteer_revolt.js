@@ -124,15 +124,18 @@ function generate_nonce(length) {
 
 var noncePool = [];
 function fillNoncePool() {
-	while (noncePool.length < 1000) {
+	while (noncePool.length < 5000) {
 		noncePool.push(`01${generate_nonce(24)}`);
 	}
 }
+// Pre-fill on startup
 fillNoncePool();
+// Keep filling in background
+setInterval(fillNoncePool, 50);
 
 function getNonce() {
-	if (noncePool.length < 100) {
-		fillNoncePool();
+	if (noncePool.length < 500) {
+		setImmediate(fillNoncePool);
 	}
 	return noncePool.pop() || `01${generate_nonce(24)}`;
 }
@@ -261,7 +264,8 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	async function sendMessageDirect(channelId, content) {
 		try {
 			const nonce = getNonce();
-			const result = await fetch(`https://revolt-api.onech.at/channels/${channelId}/messages`, {
+			// Fire request immediately without waiting for response
+			fetch(`https://revolt-api.onech.at/channels/${channelId}/messages`, {
 				method: "POST",
 				headers: {
 					"X-Session-Token": token,
@@ -273,11 +277,10 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 					nonce: nonce,
 					replies: [],
 				}),
-			});
-
-			return await result.text();
+			}).catch(() => {});
+			
+			return "sent";
 		} catch (error) {
-			console.error("Send error:", error.message);
 			return null;
 		}
 	}
@@ -358,20 +361,15 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 			var response = responses[msg.server] || "";
 
 			if (response) {
-				setImmediate(async () => {
-					try {
-						if (responseType[msg.server] == "PARSED_NUMBER") {
-							response = extractNumbers(msg.name)[0];
-						}
+				// Execute immediately without setImmediate for max speed
+				if (responseType[msg.server] == "PARSED_NUMBER") {
+					response = extractNumbers(msg.name)[0];
+				}
 
-						if (response) {
-							const result = await sendMessageDirect(msg._id, response);
-							addLog({ type: "BotMessage", message: `⚡ SENT to "${msg.name}"` });
-						}
-					} catch (error) {
-						console.error("Error:", error.message);
-					}
-				});
+				if (response) {
+					sendMessageDirect(msg._id, response);
+					addLog({ type: "BotMessage", message: `⚡ SENT to "${msg.name}"` });
+				}
 			}
 		} else {
 			newChannels.push(msg);
@@ -414,20 +412,15 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 					var response = responses[channel.server] || "";
 
 					if (response) {
-						setImmediate(async () => {
-							try {
-								if (responseType[channel.server] == "PARSED_NUMBER") {
-									response = extractNumbers(channel.name)[0];
-								}
+						// Execute immediately without setImmediate for max speed
+						if (responseType[channel.server] == "PARSED_NUMBER") {
+							response = extractNumbers(channel.name)[0];
+						}
 
-								if (response) {
-									const result = await sendMessageDirect(channel._id, response);
-									addLog({ type: "BotMessage", message: `⚡ SENT to "${channel.name}"` });
-								}
-							} catch (error) {
-								console.error("Error:", error.message);
-							}
-						});
+						if (response) {
+							sendMessageDirect(channel._id, response);
+							addLog({ type: "BotMessage", message: `⚡ SENT to "${channel.name}"` });
+						}
 					}
 				}
 			}
