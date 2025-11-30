@@ -1396,9 +1396,11 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 
 		const IS_RAILWAY = !!process.env.RAILWAY_ENVIRONMENT_NAME;
 		const RAILWAY_HOST = IS_RAILWAY ? '0.0.0.0' : 'localhost';
+		const RAILWAY_DOMAIN = process.env.RAILWAY_PUBLIC_DOMAIN || `localhost:${port}`;
 
 		server.listen(port, RAILWAY_HOST, () => {
-			addLog({ type: "DebugMessage", message: `Now listening to: http://localhost:${port}` });
+			const protocol = IS_RAILWAY ? 'https' : 'http';
+			addLog({ type: "DebugMessage", message: `Now listening to: ${protocol}://${RAILWAY_DOMAIN}` });
 		});
 	} catch (error) {
 		if (error.code == "ERR_SERVER_ALREADY_LISTEN") {
@@ -1494,9 +1496,11 @@ global_app.post("/api/add_server", async (req, res) => {
 const IS_RAILWAY = !!process.env.RAILWAY_ENVIRONMENT_NAME;
 const RAILWAY_PORT = parseInt(process.env.PORT) || 3000;
 const RAILWAY_HOST = IS_RAILWAY ? '0.0.0.0' : 'localhost';
+const RAILWAY_DOMAIN = process.env.RAILWAY_PUBLIC_DOMAIN || `localhost:${RAILWAY_PORT}`;
 
 global_server.listen(RAILWAY_PORT, RAILWAY_HOST, () => {
-	console.log(`Now listening to: http://localhost:${RAILWAY_PORT}`);
+	const protocol = IS_RAILWAY ? 'https' : 'http';
+	console.log(`✅ Dashboard: ${protocol}://${RAILWAY_DOMAIN}`);
 	if (!IS_RAILWAY) {
 		open(`http://localhost:${RAILWAY_PORT}`);
 	}
@@ -1512,8 +1516,10 @@ rl.input.on("keypress", async (char, key) => {
 	}
 
 	if (key.name === "u") {
+		const protocol = !!process.env.RAILWAY_ENVIRONMENT_NAME ? 'https' : 'http';
+		const domain = process.env.RAILWAY_PUBLIC_DOMAIN || `localhost:${RAILWAY_PORT}`;
 		console.log(`--------------------------`);
-		console.log(`http://localhost:${RAILWAY_PORT}`);
+		console.log(`✅ Dashboard: ${protocol}://${domain}`);
 		console.log(`--------------------------`);
 	}
 });
