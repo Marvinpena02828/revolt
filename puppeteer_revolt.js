@@ -1355,10 +1355,15 @@ global_app.post("/api/add_server", async (req, res) => {
 	emit_server_info();
 });
 
-global_server.listen(port, () => {
-	console.log(`Now listening to: http://localhost:${port}`);
-	open(`http://localhost:${port}`);
-
+const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
+global_server.listen(port, HOST, () => {
+	const url = process.env.NODE_ENV === 'production' 
+		? `http://0.0.0.0:${port}` 
+		: `http://localhost:${port}`;
+	console.log(`Now listening to: ${url}`);
+	if (process.env.NODE_ENV !== 'production') {
+		open(url);
+	}
 	emit_server_info();
 });
 
