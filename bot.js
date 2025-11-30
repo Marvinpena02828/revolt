@@ -1258,6 +1258,8 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		emit_server_info();
 	});
 
+	// ✅ RAILWAY: Comment out per-user server - use global server only
+	/*
 	try {
 		addLog({ type: "DebugMessage", message: "Starting bot dashboard server" });
 
@@ -1280,6 +1282,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 			port = getRandomInt(49152, 50000);
 		}
 	}
+	*/
 }
 
 // ========================================
