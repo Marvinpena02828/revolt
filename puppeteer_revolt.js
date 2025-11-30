@@ -36,6 +36,15 @@ const rl = createInterface({
 	terminal: true,
 });
 
+const browser = await puppeteer.launch({
+  headless: true,
+  args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox"
+  ]
+});
+
+
 // ========================================
 // HELPER FUNCTIONS - MOVED TO TOP
 // ========================================
