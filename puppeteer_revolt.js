@@ -1287,7 +1287,8 @@ global_io.on("connection", () => {
 	emit_server_info();
 });
 
-global_app.use(express.static(path.join(__dirname, "public/multi")));
+// Remove old static serving - use new dashboard routes instead
+// global_app.use(express.static(path.join(__dirname, "public/multi")));
 
 // Main Dashboard
 global_app.get("/", (req, res) => {
