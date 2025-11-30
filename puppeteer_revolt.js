@@ -1210,15 +1210,16 @@ global_app.get("/", (req, res) => {
 				el.innerHTML = '<p style="color: #888;">No bots yet</p>';
 				return;
 			}
-			el.innerHTML = servers.map(s => 
-				'<div class="bot-item">' +
+			el.innerHTML = servers.map(s => {
+				const deleteBtn = '<button class="btn btn-delete" onclick="deleteBot(' + "'" + s.folder + "'" + ')">Delete</button>';
+				return '<div class="bot-item">' +
 					'<div class="bot-info">' +
 						'<div class="bot-name">' + (s.username || s.folder) + '</div>' +
 						'<div class="bot-status"><span class="status ' + (s.is_running ? '' : 'off') + '">' + (s.is_running ? '🟢 Connected' : '🔴 Offline') + '</span></div>' +
 					'</div>' +
-					'<button class="btn btn-delete" onclick="deleteBot(\'' + s.folder + '\')">Delete</button>' +
-				'</div>'
-			).join('');
+					deleteBtn +
+				'</div>';
+			}).join('');
 		});
 
 		socket.on('log', (logData) => {
