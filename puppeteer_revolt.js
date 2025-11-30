@@ -30,11 +30,77 @@ if (process.platform == "win32") {
 const args = argsParser(process.argv);
 var ports = {};
 
+// Status tracking for all bot instances
+var botStatus = {};
+
 const rl = createInterface({
 	input: process.stdin,
 	output: process.stdout,
 	terminal: true,
 });
+
+// ========================================
+// COLORS FOR TERMINAL OUTPUT
+// ========================================
+const colors = {
+	reset: '\x1b[0m',
+	bright: '\x1b[1m',
+	dim: '\x1b[2m',
+	red: '\x1b[31m',
+	green: '\x1b[32m',
+	yellow: '\x1b[33m',
+	blue: '\x1b[34m',
+	magenta: '\x1b[35m',
+	cyan: '\x1b[36m',
+	white: '\x1b[37m',
+};
+
+function printStatus() {
+	console.clear();
+	console.log(`${colors.bright}${colors.green}═══════════════════════════════════════════════════════════${colors.reset}`);
+	console.log(`${colors.bright}${colors.green}🤖 REVOLT BOT CONTROL CENTER${colors.reset}`);
+	console.log(`${colors.bright}${colors.green}═══════════════════════════════════════════════════════════${colors.reset}`);
+	
+	// Server info
+	console.log(`\n${colors.bright}${colors.cyan}📍 SERVER INFO${colors.reset}`);
+	console.log(`   Version: ${colors.bright}${bot_version}${colors.reset}`);
+	console.log(`   Dashboard: ${colors.bright}http://localhost:${RAILWAY_PORT}${colors.reset}`);
+	console.log(`   Host: ${colors.bright}${RAILWAY_HOST}:${RAILWAY_PORT}${colors.reset}`);
+	
+	// Active bots
+	console.log(`\n${colors.bright}${colors.cyan}🤖 ACTIVE BOT INSTANCES${colors.reset}`);
+	const bots = Object.keys(botStatus);
+	
+	if (bots.length === 0) {
+		console.log(`   ${colors.yellow}⚠️  No bots running${colors.reset}`);
+	} else {
+		bots.forEach(botName => {
+			const status = botStatus[botName];
+			const statusIcon = status.isConnected ? colors.green + '🟢' : colors.red + '🔴';
+			const statusText = status.isConnected ? 'CONNECTED' : 'OFFLINE';
+			const username = status.username ? colors.bright + status.username + colors.reset : colors.yellow + 'Connecting...' + colors.reset;
+			
+			console.log(`\n   ${statusIcon}${colors.reset} ${colors.bright}${botName}${colors.reset}`);
+			console.log(`       Status: ${statusIcon}${colors.reset} ${colors.bright}${statusText}${colors.reset}`);
+			console.log(`       Username: ${username}`);
+			if (status.serverCount !== undefined) {
+				console.log(`       Servers: ${colors.bright}${status.serverCount}${colors.reset}`);
+			}
+			if (status.error) {
+				console.log(`       Error: ${colors.red}${status.error}${colors.reset}`);
+			}
+		});
+	}
+	
+	console.log(`\n${colors.bright}${colors.cyan}⌨️  COMMANDS${colors.reset}`);
+	console.log(`   Press 'u' - Show this status`);
+	console.log(`   Press 'Ctrl+C' - Exit bot`);
+	
+	console.log(`\n${colors.bright}${colors.green}═══════════════════════════════════════════════════════════${colors.reset}\n`);
+}
+
+// Initial status print
+printStatus();
 
 // ========================================
 // RAILWAY CONFIGURATION
@@ -43,7 +109,7 @@ const IS_RAILWAY = !!process.env.RAILWAY_ENVIRONMENT_NAME;
 const RAILWAY_PORT = parseInt(process.env.PORT) || 3000;
 const RAILWAY_HOST = IS_RAILWAY ? '0.0.0.0' : 'localhost';
 
-console.log(`[RAILWAY] Enabled: ${IS_RAILWAY}, PORT: ${RAILWAY_PORT}, HOST: ${RAILWAY_HOST}`);
+console.log(`${colors.cyan}[RAILWAY]${colors.reset} Enabled: ${IS_RAILWAY}, PORT: ${RAILWAY_PORT}, HOST: ${RAILWAY_HOST}`);
 
 // ========================================
 // HELPER FUNCTIONS - MOVED TO TOP
@@ -119,7 +185,7 @@ function emit_server_info() {
 	if (global_io) {
 		global_io.emit("servers", user_infos);
 	}
-	console.log("[emit_server_info]", JSON.stringify(user_infos, null, 2));
+	console.log(`${colors.cyan}[emit_server_info]${colors.reset}`, JSON.stringify(user_infos, null, 2));
 }
 
 function generate_nonce(length) {
@@ -153,6 +219,15 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 
 	var is_running = false;
 
+	// Initialize bot status
+	botStatus[IDENTIFIER_USER] = {
+		isConnected: false,
+		username: null,
+		serverCount: 0,
+		error: null,
+		startTime: new Date().toLocaleTimeString(),
+	};
+
 	emit_server_info();
 
 	const eventEmitter = new EventEmitter();
@@ -163,10 +238,11 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	var logs = [];
 
 	if (!IDENTIFIER_USER) {
-		console.log({ type: "ErrorMessage", message: "--user argument is required" });
+		console.log(`${colors.red}[ERROR]${colors.reset} --user argument is required`);
+		botStatus[IDENTIFIER_USER].error = "User argument required";
 		return 1;
 	} else {
-		console.log({ type: "DebugMessage", message: `Session for user "${IDENTIFIER_USER}" started` });
+		console.log(`${colors.green}[✓]${colors.reset} Session for user "${IDENTIFIER_USER}" started`);
 	}
 
 	if (!fs.existsSync(`./${IDENTIFIER_USER}`)) {
@@ -324,6 +400,13 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		const user = msg.users[msg.users.findIndex((user) => user.relationship == "User")];
 		fs.writeFileSync(`./${IDENTIFIER_USER}/account_info.json`, JSON.stringify(user));
 		clientInfo = msg;
+		
+		// Update bot status
+		botStatus[IDENTIFIER_USER].isConnected = true;
+		botStatus[IDENTIFIER_USER].username = user.username;
+		botStatus[IDENTIFIER_USER].serverCount = msg.servers?.length || 0;
+		botStatus[IDENTIFIER_USER].error = null;
+		
 		io.emit("bot_info", { username: user.username, id: user._id });
 		io.emit("serverInfo", clientInfo);
 		io.emit("canReply", canReply);
@@ -338,8 +421,19 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		broadcastToGlobal("serverInfo", clientInfo);
 		emit_server_info();
 		addLog({ type: "DebugMessage", message: `✅ CONNECTED - Bot logged in as: ${user.username}` });
+		
+		// Print to terminal
+		console.log(`\n${colors.green}${colors.bright}═══════════════════════════════════════════════════════════${colors.reset}`);
+		console.log(`${colors.green}${colors.bright}✅ BOT CONNECTED!${colors.reset}`);
+		console.log(`${colors.green}${colors.bright}═══════════════════════════════════════════════════════════${colors.reset}`);
+		console.log(`${colors.cyan}Bot Name:${colors.reset} ${colors.bright}${IDENTIFIER_USER}${colors.reset}`);
+		console.log(`${colors.cyan}Username:${colors.reset} ${colors.bright}${user.username}${colors.reset}`);
+		console.log(`${colors.cyan}User ID:${colors.reset} ${colors.bright}${user._id}${colors.reset}`);
+		console.log(`${colors.cyan}Servers:${colors.reset} ${colors.bright}${msg.servers?.length || 0}${colors.reset}`);
+		console.log(`${colors.cyan}Status:${colors.reset} ${colors.green}🟢 CONNECTED${colors.reset}`);
+		console.log(`${colors.green}${colors.bright}═══════════════════════════════════════════════════════════${colors.reset}\n`);
+		
 		logActiveTriggers();  // Show active triggers
-		console.log("✅ Connected - Bot is active!");
 	});
 
 	eventEmitter.on("Message", async (msg, page) => {
@@ -510,6 +604,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 			error = error + 1;
 			if (error >= 20) {
 				error = 0;
+				botStatus[IDENTIFIER_USER].error = "Too many connection closes";
 				return addLog({ type: "FatalError", message: "Too much close. Consider logging in again." });
 			}
 			addLog({ type: "Info", message: "Restarting immediately." });
@@ -521,12 +616,14 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 
 	eventEmitter.on("Error", (msg) => {
 		addLog({ type: "ErrorMessage", message: msg });
+		botStatus[IDENTIFIER_USER].error = msg;
 
 		if (msg) {
 			if (msg.includes("Closed with reason:")) {
 				error = error + 1;
 				if (error >= 20) {
 					error = 0;
+					botStatus[IDENTIFIER_USER].error = "Too many connection closes";
 					return addLog({ type: "FatalError", message: "Too much close. Consider logging in again." });
 				}
 				addLog({ type: "Info", message: "Restarting immediately." });
@@ -544,6 +641,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 				await initialize_puppeteer();
 			} catch (error) {
 				addLog({ type: "ErrorMessage", message: error.message });
+				botStatus[IDENTIFIER_USER].error = error.message;
 			}
 		} else {
 			addLog({ type: "BotStatus", message: "Bot is OFF" });
@@ -917,6 +1015,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 			if (!status) {
 				await browser.close();
 				addLog({ type: "DebugMessage", message: `Browser closed` });
+				botStatus[IDENTIFIER_USER].isConnected = false;
 			} else {
 				initialize_puppeteer();
 			}
@@ -1007,7 +1106,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 			global_io.emit("log", _log);
 		}
 		// Also log to console for debugging
-		console.log(JSON.stringify(log));
+		console.log(`${colors.cyan}[${IDENTIFIER_USER}]${colors.reset}`, JSON.stringify(log));
 
 		if (logs.length > 20) {
 			logs.pop();
@@ -1123,6 +1222,57 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		await server.close();
 		delete ports[original_username];
 		emit_server_info();
+	});
+
+	// Join server endpoint
+	app.post("/api/join_server", async (req, res) => {
+		const link = req.query.link;
+		
+		if (!link || !global_page) {
+			return res.json({ error: true, message: "Link required or bot not ready" });
+		}
+
+		try {
+			// Validate and format link
+			let formattedLink = link;
+			if (!link.startsWith('http')) {
+				formattedLink = 'https://' + link;
+			}
+			
+			// Convert /invite/ to /invites/
+			formattedLink = formattedLink.replace('/invite/', '/invites/');
+			
+			// Make the join request
+			const response = await global_page.evaluate(async (token, joinLink) => {
+				try {
+					const apiLink = joinLink.replace('revolt.onech.at', 'revolt-api.onech.at');
+					const result = await fetch(apiLink, {
+						method: 'POST',
+						headers: {
+							'X-Session-Token': token,
+							'referer': 'https://revolt.onech.at/',
+							'Content-Type': 'application/json'
+						},
+					});
+					
+					const data = await result.json();
+					return { success: result.ok, data: data };
+				} catch (error) {
+					return { success: false, error: error.message };
+				}
+			}, token, formattedLink);
+
+			if (response.success) {
+				addLog({ type: "DebugMessage", message: `✅ Successfully joined server: ${response.data?.name || 'Unknown'}` });
+				res.json({ error: false, message: "Joined server successfully", server: response.data });
+			} else {
+				addLog({ type: "ErrorMessage", message: `Failed to join server: ${response.error}` });
+				res.json({ error: true, message: response.error || "Failed to join server" });
+			}
+		} catch (error) {
+			addLog({ type: "ErrorMessage", message: `Join server error: ${error.message}` });
+			res.json({ error: true, message: error.message });
+		}
 	});
 
 	try {
@@ -1343,6 +1493,18 @@ global_app.get("/", (req, res) => {
 		</div>
 
 		<div class="card" style="margin-top: 20px;">
+			<h2>🔗 Join Servers</h2>
+			<div id="joinServerPanel">
+				<div style="display: flex; gap: 10px; margin-bottom: 15px;">
+					<input type="text" id="inviteLink" placeholder="Paste invite link here (e.g., https://revolt.onech.at/invite/XXXXXXXX)" style="flex: 1; background: rgba(0,0,0,0.5); border: 1px solid #444; color: #fff; padding: 10px; border-radius: 4px; font-size: 13px;">
+					<button class="btn" onclick="joinServer()" style="padding: 10px 20px;">🔗 Join Server</button>
+				</div>
+				<div id="joinStatus" style="display: none; margin-top: 10px; padding: 10px; border-radius: 4px; font-size: 12px;"></div>
+				<p style="color: #888; font-size: 12px; margin-top: 10px;">💡 Get invite links from Revolt servers at Settings → Invite People</p>
+			</div>
+		</div>
+
+		<div class="card" style="margin-top: 20px;">
 			<h2>⚙️ Server Configuration</h2>
 			<div id="serverConfigPanel">
 				<p style="color: #888;">Create a bot instance first to see servers</p>
@@ -1495,6 +1657,50 @@ global_app.get("/", (req, res) => {
 			document.getElementById('status_' + serverId).style.display = 'none';
 		}
 
+		function joinServer() {
+			const inviteLink = document.getElementById('inviteLink').value.trim();
+			const statusEl = document.getElementById('joinStatus');
+
+			if (!inviteLink) {
+				statusEl.className = 'config-status error';
+				statusEl.textContent = '❌ Please paste an invite link';
+				statusEl.style.display = 'block';
+				return;
+			}
+
+			if (!inviteLink.includes('revolt.onech.at/invite/')) {
+				statusEl.className = 'config-status error';
+				statusEl.textContent = '❌ Invalid invite link format';
+				statusEl.style.display = 'block';
+				return;
+			}
+
+			statusEl.className = 'config-status';
+			statusEl.textContent = '⏳ Joining server...';
+			statusEl.style.display = 'block';
+
+			fetch('/api/join_server?link=' + encodeURIComponent(inviteLink), { method: 'POST' })
+				.then(r => r.json())
+				.then(data => {
+					if (!data.error) {
+						statusEl.className = 'config-status';
+						statusEl.textContent = '✅ Successfully joined server! Refreshing...';
+						statusEl.style.display = 'block';
+						document.getElementById('inviteLink').value = '';
+						setTimeout(() => {
+							location.reload();
+						}, 2000);
+					} else {
+						throw new Error(data.message || 'Failed to join server');
+					}
+				})
+				.catch(err => {
+					statusEl.className = 'config-status error';
+					statusEl.textContent = '❌ Error: ' + err.message;
+					statusEl.style.display = 'block';
+				});
+		}
+
 		socket.on('log', (logData) => {
 			const logEl = document.getElementById('logs');
 			const log = logData.log;
@@ -1567,6 +1773,7 @@ global_app.delete("/api/server", async (req, res) => {
 	try {
 		fs.rmSync(req.query.server, { recursive: true });
 		delete ports[req.query.server];
+		delete botStatus[req.query.server];
 		emit_server_info();
 		res.status(200).end(req.query.server);
 	} catch (error) {
@@ -1608,27 +1815,54 @@ global_app.get("/api/running-servers", async (req, res) => {
 	res.json(ports);
 });
 
+// Join server endpoint
+global_app.post("/api/join_server", async (req, res) => {
+	const link = req.query.link;
+	
+	if (!link) {
+		return res.json({ error: true, message: "Link required" });
+	}
+
+	// Find first running bot instance
+	const runningBot = Object.keys(ports).find(botName => ports[botName].is_running);
+	
+	if (!runningBot) {
+		return res.json({ error: true, message: "No bot instance running" });
+	}
+
+	try {
+		// Make request to bot's local port
+		const botPort = ports[runningBot].port;
+		const response = await fetch(`http://localhost:${botPort}/api/join_server?link=${encodeURIComponent(link)}`, {
+			method: 'POST'
+		});
+		const data = await response.json();
+		res.json(data);
+	} catch (error) {
+		res.json({ error: true, message: error.message });
+	}
+});
+
 // Start Global Server
 global_server.listen(RAILWAY_PORT, RAILWAY_HOST, () => {
-	console.log(`[RAILWAY SERVER] Listening on ${RAILWAY_HOST}:${RAILWAY_PORT}`);
+	console.log(`${colors.green}[✓]${colors.reset} ${colors.cyan}[RAILWAY SERVER]${colors.reset} Listening on ${RAILWAY_HOST}:${RAILWAY_PORT}`);
 	if (!IS_RAILWAY) {
 		setTimeout(() => {
 			open(`http://localhost:${RAILWAY_PORT}`).catch(() => {});
 		}, 500);
 	}
 	emit_server_info();
+	printStatus();
 });
 
 rl.input.on("keypress", async (char, key) => {
 	if (key.name === "c" && key.ctrl) {
-		console.log("Exiting...");
+		console.log(`${colors.yellow}Exiting...${colors.reset}`);
 		rl.close();
 		process.exit(0);
 	}
 
 	if (key.name === "u") {
-		console.log(`--------------------------`);
-		console.log(`Dashboard: http://localhost:${RAILWAY_PORT}`);
-		console.log(`--------------------------`);
+		printStatus();
 	}
 });
