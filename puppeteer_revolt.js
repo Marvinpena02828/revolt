@@ -99,9 +99,6 @@ function printStatus() {
 	console.log(`\n${colors.bright}${colors.green}═══════════════════════════════════════════════════════════${colors.reset}\n`);
 }
 
-// Initial status print
-printStatus();
-
 // ========================================
 // RAILWAY CONFIGURATION
 // ========================================
@@ -110,6 +107,9 @@ const RAILWAY_PORT = parseInt(process.env.PORT) || 3000;
 const RAILWAY_HOST = IS_RAILWAY ? '0.0.0.0' : 'localhost';
 
 console.log(`${colors.cyan}[RAILWAY]${colors.reset} Enabled: ${IS_RAILWAY}, PORT: ${RAILWAY_PORT}, HOST: ${RAILWAY_HOST}`);
+
+// Initial status print (AFTER RAILWAY_PORT is defined)
+printStatus();
 
 // ========================================
 // HELPER FUNCTIONS - MOVED TO TOP
