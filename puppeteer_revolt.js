@@ -160,10 +160,11 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		return 0;
 	}
 
-	var port = await getNextOpenPort(getRandomInt(49152, 50000));
+	// Don't create separate ports - all dashboards served from main port 3000
+	const botDashboardPath = `/bot/${IDENTIFIER_USER}`;
 	ports[IDENTIFIER_USER] = {
 		user: IDENTIFIER_USER,
-		port,
+		dashboardPath: botDashboardPath,
 		is_running,
 		is_headless: IS_HEADLESS,
 	};
@@ -1391,25 +1392,8 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		emit_server_info();
 	});
 
-	try {
-		addLog({ type: "DebugMessage", message: "Starting bot dashboard server" });
-
-		const IS_RAILWAY = !!process.env.RAILWAY_ENVIRONMENT_NAME;
-		const RAILWAY_HOST = IS_RAILWAY ? '0.0.0.0' : 'localhost';
-		const RAILWAY_DOMAIN = process.env.RAILWAY_PUBLIC_DOMAIN || `localhost:${port}`;
-
-		server.listen(port, RAILWAY_HOST, () => {
-			const protocol = IS_RAILWAY ? 'https' : 'http';
-			addLog({ type: "DebugMessage", message: `Now listening to: ${protocol}://${RAILWAY_DOMAIN}` });
-		});
-	} catch (error) {
-		if (error.code == "ERR_SERVER_ALREADY_LISTEN") {
-			addLog({ type: "DebugMessage", message: "Bot dashboard server already running" });
-		}
-		if (error.code == "EADDRINUSE") {
-			port = getRandomInt(49152, 50000);
-		}
-	}
+	// Individual bot servers disabled - all served from main PORT 3000
+	// Each bot accessible at: /bot/IDENTIFIER_USER
 }
 
 var global_io;
