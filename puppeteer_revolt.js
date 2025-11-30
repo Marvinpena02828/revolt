@@ -1,18 +1,20 @@
 import axios from "axios";
 import { randomBytes } from "crypto";
 import fs from "fs";
-import express from "express";
+import express, { response } from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import path from "path";
 import { fileURLToPath } from "url";
 import { v4 as uuidv4 } from "uuid";
+import { parse, stringify, toJSON, fromJSON } from "flatted";
 import open from "open";
 import { EventEmitter } from "events";
 import { createInterface } from "readline";
 import net from "net";
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import argsParser from "args-parser";
 import { generateSlug } from "random-word-slugs";
 
 const bot_version = "revolt bot v4.26.2025.1128am-MAX-SPEED";
@@ -25,6 +27,7 @@ if (process.platform == "win32") {
 	process.stdout.write("\x1b]2;" + bot_version + "\x1b\x5c");
 }
 
+const args = argsParser(process.argv);
 var ports = {};
 
 const rl = createInterface({
@@ -40,10 +43,20 @@ function getRandomInt(min, max) {
 }
 
 function isPortOpen(port) {
-	return new Promise((resolve) => {
+	return new Promise((resolve, reject) => {
 		let s = net.createServer();
-		s.once("error", () => { s.close(); resolve(false); });
-		s.once("listening", () => { resolve(true); s.close(); });
+		s.once("error", (err) => {
+			s.close();
+			if (err["code"] == "EADDRINUSE") {
+				resolve(false);
+			} else {
+				resolve(false);
+			}
+		});
+		s.once("listening", () => {
+			resolve(true);
+			s.close();
+		});
 		s.listen(port);
 	});
 }
@@ -60,8 +73,16 @@ async function getNextOpenPort(startFrom = 2222) {
 	return openPort;
 }
 
+function removeStartSubstring(str, substr) {
+	if (str.startsWith(substr)) {
+		return str.slice(substr.length);
+	}
+	return str;
+}
+
 function emit_server_info() {
 	var users = fs.readdirSync("./").filter((folder) => folder.startsWith("server-"));
+
 	var user_infos = users.map((user) => {
 		if (fs.existsSync(`${user}/account_info.json`)) {
 			return {
@@ -80,7 +101,10 @@ function emit_server_info() {
 			};
 		}
 	});
-	if (global_io) global_io.emit("servers", user_infos);
+
+	if (global_io) {
+		global_io.emit("servers", user_infos);
+	}
 }
 
 function generate_nonce(length) {
@@ -97,22 +121,31 @@ fillNoncePool();
 setInterval(fillNoncePool, 50);
 
 function getNonce() {
-	if (noncePool.length < 500) setImmediate(fillNoncePool);
+	if (noncePool.length < 500) {
+		setImmediate(fillNoncePool);
+	}
 	return noncePool.pop() || `01${generate_nonce(24)}`;
 }
 
 async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMEDIATELY = true) {
 	const original_username = IDENTIFIER_USER;
+
 	var is_running = false;
+
 	emit_server_info();
 
 	const eventEmitter = new EventEmitter();
+	const Socket = net.Socket;
+
 	puppeteer.use(StealthPlugin());
+
 	var logs = [];
 
 	if (!IDENTIFIER_USER) {
 		console.log({ type: "ErrorMessage", message: "--user argument is required" });
 		return 1;
+	} else {
+		console.log({ type: "DebugMessage", message: `Session for user "${IDENTIFIER_USER}" started` });
 	}
 
 	if (!fs.existsSync(`./${IDENTIFIER_USER}`)) {
@@ -123,7 +156,9 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		fs.mkdirSync(`./${IDENTIFIER_USER}/browser-userdata`);
 	}
 
-	if (!START_IMMEDIATELY) return 0;
+	if (!START_IMMEDIATELY) {
+		return 0;
+	}
 
 	var port = await getNextOpenPort(getRandomInt(49152, 50000));
 	ports[IDENTIFIER_USER] = {
@@ -134,6 +169,10 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	};
 	emit_server_info();
 
+	function isAlphanumeric(str) {
+		return /^[a-zA-Z0-9]+$/.test(str);
+	}
+
 	process.env.NODE_TLS_REJECT_UNAUTHORIZED = 0;
 
 	const app = express();
@@ -141,13 +180,19 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	const io = new Server(server);
 	var browser = "";
 	var global_page = "";
+
 	var clientInfo = { servers: [], firstStart: true };
 	var force_headful = false;
 
 	app.use(express.static(path.join(__dirname, "public")));
+
 	app.use((req, res, next) => {
 		res.setHeader("Access-Control-Allow-Origin", "*");
-		if (req.method === "OPTIONS") return res.sendStatus(204);
+
+		if (req.method === "OPTIONS") {
+			return res.sendStatus(204);
+		}
+
 		next();
 	});
 
@@ -182,7 +227,9 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	for (const [key, file] of Object.entries(files)) {
 		if (!fs.existsSync(`./${IDENTIFIER_USER}/${file}`)) {
 			fs.writeFileSync(`./${IDENTIFIER_USER}/${file}`, JSON.stringify(initialValues[key], null, 2));
-			addLog({ type: "DebugMessage", message: `Created ${file}` });
+			addLog({ type: "DebugMessage", message: `Created ${file} with initial value` });
+		} else {
+			addLog({ type: "DebugMessage", message: `File ${file} exists` });
 		}
 	}
 
@@ -195,7 +242,9 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	var serverConfigs = JSON.parse(fs.readFileSync(`./${IDENTIFIER_USER}/server_configs.json`).toString());
 	var token = "";
 	var error = 0;
+
 	var newChannels = [];
+
 	var alreadyRespondedCache = new Set(fs.existsSync(`./${IDENTIFIER_USER}/already_responded.txt`) ? fs.readFileSync(`./${IDENTIFIER_USER}/already_responded.txt`).toString().split("\n").filter((x) => x) : []);
 
 	async function sendMessageDirect(channelId, content) {
@@ -214,11 +263,17 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 					replies: [],
 				}),
 			}).catch(() => {});
+
 			return "sent";
 		} catch (error) {
+			console.error("Send error:", error.message);
 			return null;
 		}
 	}
+
+	eventEmitter.on("raw", async (msg) => {
+		addLog(msg);
+	});
 
 	eventEmitter.on("Ready", (msg) => {
 		const user = msg.users[msg.users.findIndex((user) => user.relationship == "User")];
@@ -234,18 +289,19 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		io.emit("bot_version", bot_version);
 		io.emit("instant_responses", instantResponses);
 		emit_server_info();
-		addLog({ type: "DebugMessage", message: `✅ CONNECTED - Logged in as: ${user.username}` });
-		console.log("✅ Connected!");
+		console.log("Connected");
 	});
 
 	eventEmitter.on("Message", async (msg, page) => {
 		var channel_index = clientInfo.channels.findIndex((obj) => obj._id == msg?.channel);
 		var channel = channel_index != -1 ? clientInfo.channels[channel_index] : undefined;
-		if (!channel || channel.channel_type == "DirectMessage") return;
+
+		if (channel.channel_type == "DirectMessage") {
+			return addLog({ type: "DebugMessage", message: "Message is DirectMessage, skipping" });
+		}
 
 		var server_index = clientInfo.servers.findIndex((obj) => obj._id == channel?.server);
 		var server = server_index != -1 ? clientInfo.servers[server_index] : undefined;
-		if (!server) return;
 
 		var category;
 		if (server?.categories) {
@@ -253,56 +309,68 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 			category = category_index != -1 ? server?.categories[category_index] : undefined;
 		}
 
-		var canReplyResult = await getCanReply(category ? category.id : null, channel?.name, server?._id);
+		var canReply = await getCanReply(category ? category.id : null, channel?.name, server?._id);
 
-		if (canReplyResult.canReply) {
-			// Priority 1: Check per-server configuration
-			const serverConfig = serverConfigs[server._id];
-			if (serverConfig && msg?.content?.includes(serverConfig.command)) {
-				await sendMessageDirect(msg?.channel, serverConfig.responseTemplate);
-				addLog({ type: "BotMessage", message: `⚡ Server-specific response sent` });
-				return;
-			}
-
-			// Priority 2: Check instant responses
+		if (canReply.canReply) {
 			var instantResponse = await getInstantResponse(msg?.content, server._id, channel?.name);
-			if (instantResponse.found && instantResponse?.response) {
-				await sendMessageDirect(msg?.channel, instantResponse?.response?.respondWith);
+
+			if (instantResponse.found) {
 				addLog({ type: "BotMessage", message: `✅ Instant response match` });
+				if (instantResponse?.response) {
+					var result = await sendMessageDirect(msg?.channel, instantResponse?.response?.respondWith);
+					addLog({ type: "DebugMessage", message: JSON.stringify(result) });
+				} else {
+					addLog({ type: "DebugMessage", message: "No number extracted" });
+				}
 			}
 		}
 	});
 
-	eventEmitter.on("ChannelCreate", async (msg) => {
+	eventEmitter.on("ChannelCreate", async (msg, page) => {
 		clientInfo.channels.push(msg);
-		if (!isBotOn.status) return;
+
+		if (!isBotOn.status) {
+			return addLog({ type: "DebugMessage", message: "Bot is OFF" });
+		}
 
 		var _canReply = await getCanReply(null, msg.name, msg.server);
-		if (alreadyRespondedCache.has(msg._id)) return;
+
+		if (alreadyRespondedCache.has(msg._id)) {
+			return;
+		}
 
 		if (_canReply.canReply) {
 			alreadyRespondedCache.add(msg._id);
 			fs.appendFileSync(`./${IDENTIFIER_USER}/already_responded.txt`, msg._id + "\n");
 
 			var response = responses[msg.server] || "";
+
 			if (response) {
-				if (responseType[msg.server] == "PARSED_NUMBER") {
-					response = extractNumbers(msg.name)[0];
-				}
-				if (response) {
-					sendMessageDirect(msg._id, response);
-					addLog({ type: "BotMessage", message: `⚡ SENT to "${msg.name}"` });
-				}
+				setImmediate(async () => {
+					try {
+						if (responseType[msg.server] == "PARSED_NUMBER") {
+							response = extractNumbers(msg.name)[0];
+						}
+
+						if (response) {
+							const result = await sendMessageDirect(msg._id, response);
+							addLog({ type: "BotMessage", message: `⚡ SENT to "${msg.name}"` });
+						}
+					} catch (error) {
+						console.error("Error:", error.message);
+					}
+				});
 			}
 		} else {
 			newChannels.push(msg);
 		}
 	});
 
-	eventEmitter.on("ServerUpdate", async (msg) => {
+	eventEmitter.on("ServerUpdate", async (msg, page) => {
 		if (!isBotOn.status) return;
 
 		var serverIndex = -1;
+
 		clientInfo.servers.forEach((server, index) => {
 			if (server._id == msg.id) {
 				if (msg?.data?.categories) {
@@ -313,12 +381,17 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		});
 
 		var clonedChannels = JSON.parse(JSON.stringify(newChannels));
+
 		for (let i = 0; i < clonedChannels.length; i++) {
 			const channel = clonedChannels[i];
+
 			if (`${JSON.stringify(msg?.data?.categories)}`.includes(channel._id)) {
-				if (alreadyRespondedCache.has(channel._id)) continue;
+				if (alreadyRespondedCache.has(channel._id)) {
+					continue;
+				}
 
 				newChannels.splice(i, 1);
+
 				alreadyRespondedCache.add(channel._id);
 				fs.appendFileSync(`./${IDENTIFIER_USER}/already_responded.txt`, channel._id + "\n");
 
@@ -327,14 +400,22 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 
 				if (_canReply.canReply) {
 					var response = responses[channel.server] || "";
+
 					if (response) {
-						if (responseType[channel.server] == "PARSED_NUMBER") {
-							response = extractNumbers(channel.name)[0];
-						}
-						if (response) {
-							sendMessageDirect(channel._id, response);
-							addLog({ type: "BotMessage", message: `⚡ SENT to "${channel.name}"` });
-						}
+						setImmediate(async () => {
+							try {
+								if (responseType[channel.server] == "PARSED_NUMBER") {
+									response = extractNumbers(channel.name)[0];
+								}
+
+								if (response) {
+									const result = await sendMessageDirect(channel._id, response);
+									addLog({ type: "BotMessage", message: `⚡ SENT to "${channel.name}"` });
+								}
+							} catch (error) {
+								console.error("Error:", error.message);
+							}
+						});
 					}
 				}
 			}
@@ -359,11 +440,13 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	eventEmitter.on("ServerMemberLeave", (msg) => {
 		if (clientInfo.users[clientInfo?.users.findIndex((user) => user.relationship == "User")]._id == msg.user) {
 			var indexToDelete = -1;
+
 			clientInfo.servers.forEach((server, index) => {
 				if (server._id == msg.id) {
 					indexToDelete = index;
 				}
 			});
+
 			clientInfo.servers.splice(indexToDelete, 1);
 			io.emit("serverInfo", clientInfo);
 			io.emit("canReply", canReply);
@@ -380,20 +463,27 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 				return addLog({ type: "FatalError", message: "Too much close. Consider logging in again." });
 			}
 			addLog({ type: "Info", message: "Restarting immediately." });
-			setTimeout(() => start(), 0);
+			setTimeout(() => {
+				start();
+			}, 0);
 		}
 	});
 
 	eventEmitter.on("Error", (msg) => {
 		addLog({ type: "ErrorMessage", message: msg });
-		if (msg.includes("Closed with reason:")) {
-			error = error + 1;
-			if (error >= 20) {
-				error = 0;
-				return addLog({ type: "FatalError", message: "Too much close. Consider logging in again." });
+
+		if (msg) {
+			if (msg.includes("Closed with reason:")) {
+				error = error + 1;
+				if (error >= 20) {
+					error = 0;
+					return addLog({ type: "FatalError", message: "Too much close. Consider logging in again." });
+				}
+				addLog({ type: "Info", message: "Restarting immediately." });
+				setTimeout(() => {
+					start();
+				}, 0);
 			}
-			addLog({ type: "Info", message: "Restarting immediately." });
-			setTimeout(() => start(), 0);
 		}
 	});
 
@@ -417,59 +507,76 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		browser = await puppeteer.launch({
 			userDataDir: `./${IDENTIFIER_USER}/browser-userdata`,
 			headless: headlessMode,
-			args: ["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+			args: ["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-web-security", "--disable-features=IsolateOrigins,site-per-process", "--disable-site-isolation-trials"],
 		});
 		const page = await browser.newPage();
+
 		page.setDefaultNavigationTimeout(60000);
+
 		await page.goto("https://revolt.onech.at/");
 
 		addLog({ type: "DebugMessage", message: "Puppeteer launched" });
 
 		const client = await page.target().createCDPSession();
+
 		await client.send("Network.enable");
 
 		client.on("Network.webSocketFrameSent", async ({ requestId, timestamp, response }) => {
-			try {
+			if (is_valid_json(response.payloadData)) {
 				var parsed = JSON.parse(response.payloadData);
+
 				if (parsed.type == "Authenticate") {
 					global_page = page;
 					token = parsed.token;
+
 					if (force_headful) {
 						addLog({ type: "DebugMessage", message: "Authenticated. Restarting in headless mode" });
 						force_headful = false;
+
 						setTimeout(async () => {
 							await browser.close();
-							ports[IDENTIFIER_USER] = { user: IDENTIFIER_USER, port, is_running: false, is_headless: IS_HEADLESS };
+
+							ports[IDENTIFIER_USER] = {
+								user: IDENTIFIER_USER,
+								port,
+								is_running: false,
+								is_headless: IS_HEADLESS,
+							};
 							emit_server_info();
+
 							await sleep(500);
 							initialize_puppeteer();
 						}, 1000);
 					} else {
-						addLog({ type: "DebugMessage", message: "✅ Authenticated!" });
+						addLog({ type: "DebugMessage", message: "Authenticated" });
 					}
 				}
-			} catch (e) {}
+			}
 		});
 
 		client.on("Network.webSocketFrameReceived", async ({ requestId, timestamp, response }) => {
-			try {
+			if (is_valid_json(response.payloadData)) {
 				var parsed = JSON.parse(response.payloadData);
 				eventEmitter.emit(parsed.type, parsed, page);
-			} catch (e) {}
+			}
 		});
 
 		page.on("framenavigated", async (frame) => {
 			if (frame !== page.mainFrame()) return;
+
 			const currentUrl = frame.url();
 
 			if (currentUrl.startsWith("https://revolt.onech.at/login") && !force_headful) {
 				force_headful = true;
 				addLog({ type: "DebugMessage", message: `Redirected to /login` });
+
 				const cookies = await page.cookies();
 				for (const cookie of cookies) {
 					await page.deleteCookie(cookie);
 				}
+
 				await page.goto("about:blank");
+
 				setTimeout(async () => {
 					await browser.close();
 					await sleep(500);
@@ -481,13 +588,16 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 			try {
 				const content = await page.content();
 				const lowerContent = content.toLowerCase();
+
 				if ((lowerContent.includes("security of your connection") || lowerContent.includes("blocked")) && !force_headful) {
 					addLog({ type: "DebugMessage", message: `Cloudflare detected` });
 					force_headful = true;
+
 					const cookies = await page.cookies();
 					for (const cookie of cookies) {
 						await page.deleteCookie(cookie);
 					}
+
 					await page.goto("about:blank");
 					setTimeout(async () => {
 						await browser.close();
@@ -495,45 +605,171 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 						await initialize_puppeteer();
 					}, 500);
 				}
-			} catch (error) {}
+			} catch (error) {
+				if (error.message.includes("Execution context was destroyed")) {
+					console.log("Page navigated");
+				}
+			}
 		});
 
 		if (force_headful) {
-			return await page.evaluate(async (original_username) => {
-				var html = `<div style="pointer-events: none; display: flex; position: absolute; top: 80px; right: 10px; z-index: 10000000; background: #d5ff95; border: 2px black dashed; padding: 0.5rem 0.6rem; border-radius: 1rem; flex-direction: column; color: black; opacity: 0.7; gap: 5px;">
-				<span>Logging in for: "${original_username}"</span>
-				<span>Cloudflare problems? Clear cookies.</span>
-				</div>`;
-				var element = document.createElement("div");
-				element.innerHTML = html;
-				document.body.append(element);
-			}, original_username);
+			return await page.evaluate(
+				async (original_username) => {
+					var html = `<div style="pointer-events: none; display: flex; position: absolute; top: 80px; right: 10px; z-index: 10000000; background: #d5ff95; border: 2px black dashed; padding: 0.5rem 0.6rem; border-radius: 1rem; flex-direction: column; color: black; opacity: 0.7; gap: 5px;">
+            <span>Logging in for: "${original_username}"</span>
+            <span>Cloudflare problems? Clear cookies.</span>
+            </div>`;
+					var element = document.createElement("div");
+					element.innerHTML = html;
+					document.body.append(element);
+				},
+				original_username
+			);
 		}
 
 		setTimeout(() => {
 			is_running = true;
-			ports[IDENTIFIER_USER] = { user: IDENTIFIER_USER, port, is_running, is_headless: IS_HEADLESS };
+			ports[IDENTIFIER_USER] = {
+				user: IDENTIFIER_USER,
+				port,
+				is_running,
+				is_headless: IS_HEADLESS,
+			};
 			emit_server_info();
 		}, 3000);
 	}
 
 	start();
 
+	async function addInstantResponse(serverId = "", message = "", respondWith = "", regex = false, caseSensitive = false, uuid = "") {
+		if (!instantResponses[serverId]) {
+			instantResponses[serverId] = {};
+		}
+
+		instantResponses[serverId][uuid] = {
+			respondWith,
+			regex: JSON.parse(regex),
+			caseSensitive: JSON.parse(caseSensitive),
+			message,
+			uuid,
+		};
+
+		clientInfo.instantResponses = instantResponses;
+		fs.writeFileSync(`./${IDENTIFIER_USER}/instant_responses.json`, JSON.stringify(instantResponses));
+	}
+
+	async function removeInstantResponse(serverId = "", uuid = "") {
+		if (!instantResponses[serverId]) {
+			instantResponses[serverId] = {};
+		}
+		if (instantResponses[serverId][uuid]) {
+			delete instantResponses[serverId][uuid];
+		} else {
+			throw new Error("NON_EXISTENT_INSTANT_RESPONSE");
+		}
+		clientInfo.instantResponses = instantResponses;
+		fs.writeFileSync(`./${IDENTIFIER_USER}/instant_responses.json`, JSON.stringify(instantResponses));
+	}
+
+	async function setReplyWith(string, serverId) {
+		responses[serverId] = string;
+		clientInfo.responses = responses;
+		clientInfo.canReply = canReply;
+		fs.writeFileSync(`./${IDENTIFIER_USER}/responses.json`, JSON.stringify(responses));
+	}
+
+	async function getReplyWith(serverId) {
+		return responses[serverId];
+	}
+
+	async function addReplyWithKeyword(string, serverId) {
+		if (string) {
+			string = string.trim();
+		}
+		if (!responses[serverId + "_keywords"]) {
+			responses[serverId + "_keywords"] = [];
+		}
+
+		if (responses[serverId + "_keywords_is_case_sensitive"] != true && responses[serverId + "_keywords_is_case_sensitive"] != false) {
+			responses[serverId + "_keywords_is_case_sensitive"] = false;
+		}
+
+		if (responses[serverId + "_keywords"].includes(string)) {
+			throw new Error("DUPLICATE_KEYWORD");
+		}
+
+		responses[serverId + "_keywords"].push(string);
+		responses[serverId + "_keywords"] = [...new Set(responses[serverId + "_keywords"])];
+		clientInfo.responses = responses;
+		clientInfo.canReply = canReply;
+		fs.writeFileSync(`./${IDENTIFIER_USER}/responses.json`, JSON.stringify(responses));
+		return true;
+	}
+
+	async function removeKeyword(string, serverId) {
+		if (!responses[serverId + "_keywords"]) {
+			responses[serverId + "_keywords"] = [];
+		}
+
+		if (responses[serverId + "_keywords_is_case_sensitive"] != true && responses[serverId + "_keywords_is_case_sensitive"] != false) {
+			responses[serverId + "_keywords_is_case_sensitive"] = false;
+		}
+
+		var index = responses[serverId + "_keywords"].indexOf(string);
+
+		if (index !== -1) {
+			responses[serverId + "_keywords"].splice(index, 1);
+			fs.writeFileSync(`./${IDENTIFIER_USER}/responses.json`, JSON.stringify(responses));
+			return true;
+		} else {
+			throw new Error("NON_EXISTENT_KEYWORD");
+		}
+	}
+
+	async function setKeywordCaseSensitive(state, serverId) {
+		responses[serverId + "_keywords_is_case_sensitive"] = state;
+		clientInfo.responses = responses;
+		clientInfo.canReply = canReply;
+		fs.writeFileSync(`./${IDENTIFIER_USER}/responses.json`, JSON.stringify(responses));
+	}
+
+	async function setCanReply(categoryId) {
+		canReply.push(categoryId);
+		clientInfo.responses = responses;
+		clientInfo.canReply = canReply;
+		fs.writeFileSync(`./${IDENTIFIER_USER}/canreply.json`, JSON.stringify([...new Set(canReply)]));
+	}
+
+	async function unsetCanReply(categoryId) {
+		canReply = canReply.filter((item) => item !== categoryId);
+		fs.writeFileSync(`./${IDENTIFIER_USER}/canreply.json`, JSON.stringify(canReply));
+	}
+
 	async function getInstantResponse(message, serverId, channelName) {
 		if (message && channelName) {
 			for (let index = 0; index < Object.values(instantResponses[serverId] ? instantResponses[serverId] : {}).length; index++) {
 				const response = Object.values(instantResponses[serverId] ? instantResponses[serverId] : {})[index];
-				if (!response.caseSensitive) {
-					if (message.toLowerCase().includes(response.message.toLowerCase())) {
-						return { found: true, response };
+
+				if (response.caseSensitive) {
+					message = message.toLowerCase();
+					channelName = channelName.toLowerCase();
+				}
+
+				if (message.includes(response.message)) {
+					if (response.regex) {
+						return {
+							found: true,
+							response: { respondWith: extractNumbers(channelName)[0] },
+						};
 					}
-				} else {
-					if (message.includes(response.message)) {
-						return { found: true, response };
-					}
+					return {
+						found: true,
+						response,
+					};
 				}
 			}
 		}
+
 		return { found: false };
 	}
 
@@ -541,18 +777,109 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		if (responses[`${serverId}_keywords`]) {
 			for (let index = 0; index < responses[`${serverId}_keywords`].length; index++) {
 				const keyword = responses[`${serverId}_keywords`][index];
-				if (!responses[`${serverId}_keywords_is_case_sensitive`]) {
+
+				if (`${serverId}_keywords_is_case_sensitive`) {
 					if (channelName.toLowerCase().includes(keyword.toLowerCase())) {
-						return { canReply: true, reason: "keyword match" };
+						return {
+							canReply: true,
+							reason: "keyword match",
+						};
 					}
 				} else {
 					if (channelName.includes(keyword)) {
-						return { canReply: true, reason: "keyword match" };
+						return {
+							canReply: true,
+							reason: "keyword match",
+						};
 					}
 				}
 			}
 		}
-		return { canReply: canReply.includes(categoryId), reason: canReply.includes(categoryId) ? "category match" : "" };
+
+		return {
+			canReply: canReply.includes(categoryId),
+			reason: canReply.includes(categoryId) ? "category match" : "",
+		};
+	}
+
+	async function joinServer(link, page) {
+		link = ensureHttps(link);
+		if (!isValidInviteLink(link)) {
+			return { error: true };
+		}
+
+		link = link.replace("/invite/", "/invites/");
+		link = link.replace("revolt.onech.at", "revolt-api.onech.at");
+
+		return await page.evaluate(
+			async (token, link) => {
+				var result = await fetch(link, {
+					method: "POST",
+					headers: {
+						"X-Session-Token": token,
+						referer: "https://revolt.onech.at/",
+					},
+				});
+
+				var data = await result.json();
+				return data;
+			},
+			token,
+			link
+		);
+	}
+
+	function isValidInviteLink(link) {
+		const regex = /^https?:\/\/revolt\.onech\.at\/invite\/[A-Za-z0-9]{8}$/;
+		return regex.test(link);
+	}
+
+	async function setBotStatus(status) {
+		if (status == true || status == false) {
+			isBotOn.status = status;
+			fs.writeFileSync(`./${IDENTIFIER_USER}/is_bot_on.json`, JSON.stringify(isBotOn));
+
+			if (!status) {
+				await browser.close();
+				addLog({ type: "DebugMessage", message: `Browser closed` });
+			} else {
+				initialize_puppeteer();
+			}
+
+			io.emit("bot_status", isBotOn);
+			return true;
+		} else {
+			throw new Error("INPUT_NOT_BOOLEAN");
+		}
+	}
+
+	function ensureHttps(url) {
+		if (url.startsWith("https://")) {
+			return url;
+		} else if (url.startsWith("http://")) {
+			return url.replace("http://", "https://");
+		} else {
+			return "https://" + url;
+		}
+	}
+
+	async function leaveServer(serverId, leaveSilently, page) {
+		return await page.evaluate(
+			async (token, serverId, leaveSilently) => {
+				var result = await fetch(`https://revolt-api.onech.at/servers/${serverId}/${leaveSilently ? "?leave_silently=true" : "?leave_silently=false"}`, {
+					method: "DELETE",
+					headers: {
+						"X-Session-Token": token,
+						referer: "https://revolt.onech.at/",
+					},
+				});
+
+				return { success: true };
+			},
+			token,
+			serverId,
+			leaveSilently
+		);
 	}
 
 	function findCategoryByChannelId(channelId, categories = []) {
@@ -564,6 +891,34 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		return null;
 	}
 
+	async function setResponseDelay(min, max) {
+		if (!isOnlyNumbers(max) || !isOnlyNumbers(min)) {
+			throw new Error("INPUT_NOT_NUMERICAL");
+		}
+
+		response_delay = {
+			min_ms: min,
+			max_ms: max,
+		};
+
+		fs.writeFileSync(`./${IDENTIFIER_USER}/response_delay.json`, JSON.stringify(response_delay));
+		return true;
+	}
+
+	async function setResponseType(type, server_id) {
+		if (!response_types.includes(type)) {
+			throw new Error("INVALID_RESPONSE_TYPE");
+		}
+
+		responseType[server_id] = type;
+		fs.writeFileSync(`./${IDENTIFIER_USER}/response_type.json`, JSON.stringify(responseType));
+		return true;
+	}
+
+	function isOnlyNumbers(input) {
+		return /^\d+$/.test(input);
+	}
+
 	function sleep(ms) {
 		return new Promise((resolve) => setTimeout(resolve, ms));
 	}
@@ -572,8 +927,10 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		var _log = { timestamp: new Date().getTime(), log, uuid: uuidv4() };
 		logs.unshift(_log);
 		io.emit("log", _log);
-		if (global_io) global_io.emit("log", _log);
-		if (logs.length > 20) logs.pop();
+
+		if (logs.length > 20) {
+			logs.pop();
+		}
 	}
 
 	function extractNumbers(str) {
@@ -590,10 +947,15 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		}
 	}
 
+	async function sendMessage(id, content, page) {
+		return await sendMessageDirect(id, content);
+	}
+
 	io.on("connection", (socket) => {
 		if (clientInfo.users) {
-			io.emit("bot_info", { username: clientInfo.users[clientInfo?.users.findIndex((user) => user.relationship == "User")].username });
+			io.emit("bot_info", { username: clientInfo.users[clientInfo?.users.findIndex((user) => user.relationship == "User")].username, id: clientInfo.users[clientInfo?.users.findIndex((user) => user.relationship == "User")]._id });
 		}
+
 		io.emit("bot_version", bot_version);
 		io.emit("serverInfo", clientInfo);
 		io.emit("canReply", canReply);
@@ -610,29 +972,244 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		res.json(clientInfo);
 	});
 
-	// NEW: Per-server config endpoint
-	app.post("/api/server_config", async (req, res) => {
-		const serverId = req.query.serverId;
-		const command = req.query.command;
-		const responseTemplate = req.query.response;
-		
-		if (!serverId || !command || !responseTemplate) {
-			return res.status(400).json({ error: true, message: "All fields required" });
+	app.post("/api/set_response", async (req, res) => {
+		if (!req.query.response) {
+			await setReplyWith(req.query.response, req.query.serverId);
+			addLog({ type: "DebugMessage", message: `Bot response set to empty on server "${req.query.serverId}"` });
+			return res.json({ ...responses, error: false });
 		}
-		
-		serverConfigs[serverId] = { command, responseTemplate };
-		fs.writeFileSync(`./${IDENTIFIER_USER}/server_configs.json`, JSON.stringify(serverConfigs, null, 2));
-		addLog({ type: "DebugMessage", message: `📋 Config set: ${command} → ${responseTemplate}` });
-		res.json({ error: false, config: serverConfigs[serverId] });
+		if (!req.query.serverId) {
+			return res.status(400).json({ error: true, message: "Server ID is empty" });
+		}
+
+		await setReplyWith(req.query.response, req.query.serverId);
+		addLog({ type: "DebugMessage", message: `Bot will now respond "${req.query.response}" on server "${req.query.serverId}"` });
+		res.json({ ...responses, error: false });
 	});
 
-	app.get("/api/server_config/:serverId", (req, res) => {
-		const config = serverConfigs[req.params.serverId] || null;
-		res.json({ config });
+	app.post("/api/set_response_keyword_case_sensitive", async (req, res) => {
+		if (!req.query.state) {
+			return res.status(400).json({ error: true, message: "State is empty" });
+		}
+		if (!req.query.state != true && !req.query.state != false) {
+			return res.status(400).json({ error: true, message: "State is not a boolean" });
+		}
+		if (!req.query.serverId) {
+			return res.status(400).json({ error: true, message: "Server ID is empty" });
+		}
+
+		await setKeywordCaseSensitive(req.query.state, req.query.serverId);
+		addLog({ type: "DebugMessage", message: `Keyword responding is now ${req.query.state ? "case sensitive" : "case insensitive"} on "${req.query.serverId}"` });
+		res.json({ ...responses, error: false });
+	});
+
+	app.post("/api/add_response_keyword", async (req, res) => {
+		if (!req.query.string) {
+			return res.status(400).json({ error: true, message: "String is empty" });
+		}
+		if (!req.query.serverId) {
+			return res.status(400).json({ error: true, message: "Server ID is empty" });
+		}
+
+		try {
+			var result = await addReplyWithKeyword(req.query.string, req.query.serverId);
+			addLog({ type: "DebugMessage", message: `Bot will now respond to categories on server "${req.query.serverId}" with the keyword ${req.query.string}` });
+			io.emit("responses", responses);
+			res.json({ ...responses, error: false });
+		} catch (error) {
+			if (error.message == "DUPLICATE_KEYWORD") {
+				return res.status(400).json({
+					error: true,
+					reason: "DUPLICATE_KEYWORD",
+				});
+			}
+			res.status(500).json(error);
+		}
+	});
+
+	app.post("/api/delete_keyword", async (req, res) => {
+		if (!req.query.string) {
+			return res.status(400).json({ error: true, message: "String is empty" });
+		}
+		if (!req.query.serverId) {
+			return res.status(400).json({ error: true, message: "Server ID is empty" });
+		}
+
+		try {
+			var result = await removeKeyword(req.query.string, req.query.serverId);
+			addLog({ type: "DebugMessage", message: `Keyword "${req.query.string}" for matching has been removed on server ${req.query.serverId}` });
+			io.emit("responses", responses);
+			res.json({ ...responses, error: false });
+		} catch (error) {
+			if (error.message == "NON_EXISTENT_KEYWORD") {
+				return res.status(400).json({
+					error: true,
+					reason: "NON_EXISTENT_KEYWORD",
+				});
+			}
+			res.status(500).json(error);
+		}
+	});
+
+	app.post("/api/set_can_reply", async (req, res) => {
+		if (!req.query.categoryId) {
+			return res.status(400).json({ error: true, message: "Category ID is empty" });
+		}
+
+		addLog({ type: "DebugMessage", message: `Bot will now respond on category "${req.query.categoryId}"` });
+		await setCanReply(req.query.categoryId);
+		res.json({ canReply, error: false });
+	});
+
+	app.post("/api/join_server", async (req, res) => {
+		if (!req.query.serverUrl) {
+			return res.status(400).json({ error: true, message: "Server URL is empty" });
+		}
+		try {
+			const result = await joinServer(req.query.serverUrl, global_page);
+
+			if (!clientInfo.servers.some((server) => server._id == result.server._id)) {
+				clientInfo.servers.push(result.server);
+				clientInfo.channels = [...clientInfo.channels, ...result.channels];
+			}
+
+			if (result.error) {
+				res.status(400).json({ error: true, message: `Something went wrong in joining the server link.`, response: result.response });
+			} else {
+				addLog({ type: "DebugMessage", message: `Bot has joined the server with the invite link "${req.query.serverUrl}"` });
+				res.json({ ...result, clientInfo });
+			}
+		} catch (error) {
+			res.status(500).json({ error: true, message: `Something went wrong in joining the server link.`, response: error });
+		} finally {
+			io.emit("serverInfo", clientInfo);
+			io.emit("canReply", canReply);
+			io.emit("responses", responses);
+		}
+	});
+
+	app.post("/api/leave_server", async (req, res) => {
+		if (!req.query.serverId) {
+			return res.status(400).json({ error: true, message: "Server ID is empty" });
+		}
+		try {
+			const result = await leaveServer(req.query.serverId, req.query.leaveSilently, global_page);
+
+			if (result.error) {
+				res.status(400).json({ error: true, message: `Something went wrong in leaving server.` });
+			} else {
+				addLog({ type: "DebugMessage", message: `Bot has left the server "${req.query.serverId}"` });
+				res.json({ ...result, clientInfo });
+			}
+		} catch (error) {
+			res.status(500).json({ error: true, message: `Something went wrong in leaving server.` });
+		} finally {
+			io.emit("serverInfo", clientInfo);
+			io.emit("canReply", canReply);
+			io.emit("responses", responses);
+		}
 	});
 
 	app.get("/api/logs", async (req, res) => {
 		res.json(logs);
+	});
+
+	app.delete("/api/set_can_reply", async (req, res) => {
+		if (!req.query.categoryId) {
+			return res.status(400).json({ error: true, message: "Category ID is empty" });
+		}
+
+		addLog({ type: "DebugMessage", message: `Bot will now stop responding on category "${req.query.categoryId}"` });
+		await unsetCanReply(req.query.categoryId);
+		res.json({ canReply, error: false });
+	});
+
+	app.post("/api/set_bot_status", async (req, res) => {
+		try {
+			if (!req.query.status) {
+				return res.status(400).json({ error: true, message: "Status is empty" });
+			}
+
+			var result = await setBotStatus(JSON.parse(req.query.status));
+			addLog({ type: "BotStatus", message: isBotOn.status ? "Bot is now set to: ON" : "Bot is now set to: OFF" });
+			res.json({ error: false, message: `Bot is now turned ${isBotOn.status ? "ON" : "OFF"}` });
+		} catch (error) {
+			addLog({ type: "BotStatus", message: "Something went wrong when setting bot status." });
+			res.json({ error: true, message: "Something went wrong when setting bot status." }).status(500);
+		}
+	});
+
+	app.post("/api/set_response_delay", async (req, res) => {
+		try {
+			if (!req.query.min) {
+				return res.status(400).json({ error: true, message: "Minimum is empty" });
+			}
+			if (!req.query.max) {
+				return res.status(400).json({ error: true, message: "Maximum is empty" });
+			}
+
+			var result = await setResponseDelay(req.query.min, req.query.max);
+			addLog({ type: "DebugMessage", message: `Response delay successfully set` });
+			res.json({ error: false, message: "Successfully set response delay." });
+			io.emit("response_delay", response_delay);
+		} catch (error) {
+			res.status(500).json({ error: true, message: "Something went wrong when setting response delay." });
+		}
+	});
+
+	app.post("/api/set_response_type", async (req, res) => {
+		try {
+			if (!response_types.includes(req.query.response_type)) {
+				return res.status(400).json({ error: true, message: `Response type "${req.query.response_type}" is not valid.` });
+			}
+
+			if (!req.query.serverId) {
+				return res.status(400).json({ error: true, message: "Server ID is empty" });
+			}
+
+			var result = await setResponseType(req.query.response_type, req.query.serverId);
+			addLog({ type: "DebugMessage", message: `Response type successfully set to ${req.query.response_type}` });
+			res.json({ error: false, message: "Successfully set response type." });
+			io.emit("response_type", responseType);
+		} catch (error) {
+			res.status(500).json({ error: true, message: "Something went wrong when setting response type." });
+		}
+	});
+
+	app.post("/api/instant_response", async (req, res) => {
+		try {
+			const { serverId, message, respondWith, regex, caseSensitive, uuid } = req.query;
+
+			if (!serverId) return res.status(400).json({ error: true, message: "Server ID is empty" });
+			if (!uuid) return res.status(400).json({ error: true, message: "UUID is empty" });
+			if (!message) return res.status(400).json({ error: true, message: "Message is empty" });
+			if (!respondWith && !regex) return res.status(400).json({ error: true, message: "Response is empty" });
+			if (!regex) return res.status(400).json({ error: true, message: "Response type is empty" });
+			if (caseSensitive && !["true", "false"].includes(caseSensitive)) return res.status(400).json({ error: true, message: "caseSensitive must be 'true' or 'false'" });
+
+			var result = await addInstantResponse(serverId, message, respondWith, regex, caseSensitive, uuid);
+			addLog({ type: "DebugMessage", message: `Instant response added in server ${serverId}` });
+			res.json({ error: false, message: "Successfully added instant response." });
+			io.emit("instant_responses", clientInfo.instantResponses);
+		} catch (error) {
+			res.json({ error: true, message: "Something went wrong when adding instant response." });
+		}
+	});
+
+	app.delete("/api/instant_response", async (req, res) => {
+		try {
+			const { serverId, uuid } = req.query;
+
+			if (!serverId) return res.status(400).json({ error: true, message: "Server ID is empty" });
+			if (!uuid) return res.status(400).json({ error: true, message: "UUID is empty" });
+
+			var result = await removeInstantResponse(serverId, uuid);
+			addLog({ type: "DebugMessage", message: `Instant response deleted in server ${serverId}` });
+			res.json({ error: false, message: "Successfully deleted instant response." });
+			io.emit("instant_responses", clientInfo.instantResponses);
+		} catch (error) {
+			res.json({ error: true, message: "Something went wrong when deleting instant response." });
+		}
 	});
 
 	app.get("/api/bot_version", (req, res) => {
@@ -640,7 +1217,9 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	});
 
 	app.get("/api/end_server", async (req, res) => {
-		if (!is_running) return res.json({ error: true });
+		if (!is_running) {
+			return res.json({ error: true });
+		}
 		await browser.close();
 		res.json({ error: false });
 		await io.disconnectSockets();
@@ -651,6 +1230,8 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	});
 
 	try {
+		addLog({ type: "DebugMessage", message: "Starting bot dashboard server" });
+
 		const IS_RAILWAY = !!process.env.RAILWAY_ENVIRONMENT_NAME;
 		const RAILWAY_HOST = IS_RAILWAY ? '0.0.0.0' : 'localhost';
 
@@ -658,6 +1239,9 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 			addLog({ type: "DebugMessage", message: `Now listening to: http://localhost:${port}` });
 		});
 	} catch (error) {
+		if (error.code == "ERR_SERVER_ALREADY_LISTEN") {
+			addLog({ type: "DebugMessage", message: "Bot dashboard server already running" });
+		}
 		if (error.code == "EADDRINUSE") {
 			port = getRandomInt(49152, 50000);
 		}
@@ -676,170 +1260,45 @@ global_io.on("connection", () => {
 	emit_server_info();
 });
 
-// SIMPLE DASHBOARD
-global_app.get("/", (req, res) => {
-	res.send(`<!DOCTYPE html>
-<html>
-<head>
-	<title>Revolt Bot</title>
-	<meta charset="UTF-8">
-	<style>
-		* { margin: 0; padding: 0; box-sizing: border-box; }
-		body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #fff; padding: 20px; }
-		.container { max-width: 1200px; margin: 0 auto; }
-		h1 { color: #4CAF50; margin-bottom: 10px; }
-		.buttons { display: flex; gap: 10px; margin: 20px 0; flex-wrap: wrap; }
-		.btn { background: #4CAF50; color: #fff; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; }
-		.btn:hover { background: #45a049; }
-		.btn.primary { background: #5865F2; }
-		.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
-		.card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 20px; border-radius: 12px; }
-		.card h2 { color: #4CAF50; margin-bottom: 15px; }
-		.card p { color: #aaa; line-height: 1.6; font-size: 13px; margin-bottom: 10px; }
-		.bot { background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; }
-		.status { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; background: #4CAF50; }
-		.off { background: #f44336; }
-		.logs { background: rgba(0,0,0,0.5); border-radius: 8px; padding: 15px; height: 250px; overflow-y: auto; font-family: monospace; font-size: 12px; line-height: 1.6; }
-	</style>
-</head>
-<body>
-	<div class="container">
-		<h1>🤖 Revolt Bot Dashboard</h1>
-		<p style="color: #aaa; margin-bottom: 20px;">v4.26.2025.1128am-MAX-SPEED</p>
-		
-		<div class="buttons">
-			<button class="btn primary" onclick="window.open('https://revolt.onech.at/', '_blank')">↗ Open Revolt</button>
-			<button class="btn" onclick="window.location.href='/login'">🔐 Login</button>
-			<button class="btn" onclick="addBot()">+ Create Bot</button>
-		</div>
-
-		<div class="grid">
-			<div class="card">
-				<h2>📋 Setup Guide</h2>
-				<p>1. Click Login button above</p>
-				<p>2. Login sa Revolt account mo</p>
-				<p>3. Come back & click Create Bot</p>
-				<p>4. Wait for connection - check logs</p>
-				<p style="color: #4CAF50; margin-top: 10px;">✅ Auto-claim enabled!</p>
-			</div>
-
-			<div class="card">
-				<h2>🟢 Active Bots</h2>
-				<div id="bots"><p style="color: #888;">No bots running</p></div>
-			</div>
-
-			<div class="card">
-				<h2>⚡ Features</h2>
-				<p>✅ 5x FASTER execution</p>
-				<p>✅ Per-server configuration</p>
-				<p>✅ Instant auto-responses</p>
-				<p>✅ Railway optimized</p>
-			</div>
-		</div>
-
-		<div class="card" style="margin-top: 20px;">
-			<h2>📝 Live Connection Logs</h2>
-			<div id="logs" class="logs"><p style="color: #888;">Waiting for bot connection...</p></div>
-		</div>
-	</div>
-
-	<script src="/socket.io/socket.io.js"><\/script>
-	<script>
-		const socket = io();
-		let logs = [];
-
-		function addBot() {
-			fetch('/api/add_server', { method: 'POST' })
-				.then(() => { alert('Bot creating... wait 5s then refresh'); setTimeout(() => location.reload(), 5000); })
-				.catch(e => alert('Error'));
-		}
-
-		function deleteBot(f) {
-			if (confirm('Delete this bot?')) {
-				fetch('/api/server?server=' + f, { method: 'DELETE' })
-					.then(() => location.reload());
-			}
-		}
-
-		socket.on('servers', (servers) => {
-			const el = document.getElementById('bots');
-			if (!servers?.length) {
-				el.innerHTML = '<p style="color: #888;">No bots yet</p>';
-				return;
-			}
-			el.innerHTML = servers.map(s => `<div class="bot"><div><strong>${s.username || s.folder}</strong><br/><small class="status ${s.is_running ? '' : 'off'}">${s.is_running ? '🟢 Connected' : '🔴 Offline'}</small></div><button class="btn" onclick="deleteBot('${s.folder}')" style="background: #f44336; padding: 6px 12px;">Del</button></div>`).join('');
-		});
-
-		socket.on('log', (data) => {
-			const timestamp = new Date(data.timestamp).toLocaleTimeString();
-			const msg = typeof data.log === 'object' ? data.log.message : data.log;
-			const color = data.log?.type === 'ErrorMessage' ? '#f44336' : data.log?.type === 'BotMessage' ? '#4CAF50' : '#aaa';
-			logs.unshift(`<div style="color: ${color}"><small>[${timestamp}]</small> ${msg}</div>`);
-			if (logs.length > 50) logs.pop();
-			document.getElementById('logs').innerHTML = logs.join('');
-			document.getElementById('logs').scrollTop = 0;
-		});
-	<\/script>
-</body>
-</html>`);
-});
-
-global_app.get("/login", (req, res) => {
-	res.send(`<!DOCTYPE html>
-<html>
-<head>
-	<title>Login</title>
-	<style>
-		* { margin: 0; padding: 0; }
-		body { font-family: Arial; background: #1a1a1a; height: 100vh; }
-		.header { background: #2a2a2a; padding: 15px; border-bottom: 2px solid #4CAF50; color: #fff; }
-		.header h2 { color: #4CAF50; }
-		.header a { color: #4CAF50; text-decoration: none; }
-		.container { width: 100%; height: 100%; display: flex; flex-direction: column; }
-		iframe { flex: 1; border: none; }
-	</style>
-</head>
-<body>
-	<div class="container">
-		<div class="header">
-			<h2>🔐 Login to Revolt</h2>
-			<p><a href="/">← Back to Dashboard</a></p>
-		</div>
-		<iframe src="https://revolt.onech.at/"><\/iframe>
-	</div>
-</body>
-</html>`);
-});
+global_app.use(express.static(path.join(__dirname, "public/multi")));
 
 global_app.post("/api/server", async (req, res) => {
-	if (!req.query.server) return res.end("Server required");
-	if (ports[req.query.server]) return res.end("Already started");
+	if (!req.query.server) {
+		return res.end("Server is required");
+	}
+
+	if (ports[req.query.server]) {
+		return res.end("User has already started");
+	}
+
 	await start_everything(req.query.server, false);
+
 	emit_server_info();
-	res.end("Starting");
+	res.end("Starting.");
 });
 
 global_app.delete("/api/server", async (req, res) => {
-	if (!req.query.server) return res.end("Server required");
+	if (!req.query.server) {
+		return res.end("Server is required");
+	}
+
 	try {
 		fs.rmSync(req.query.server, { recursive: true });
-		delete ports[req.query.server];
 		emit_server_info();
 		res.status(200).end(req.query.server);
+		return 0;
 	} catch (error) {
 		res.status(500).end(error.code);
 	}
 });
 
-global_app.post("/api/add_server", async (req, res) => {
-	const slug = "server-" + generateSlug();
-	res.end(slug);
-	await start_everything(slug, true, false);
-	emit_server_info();
+global_app.get("/api/running-servers", async (req, res) => {
+	res.json(ports);
 });
 
 global_app.get("/api/servers", async (req, res) => {
 	var users = fs.readdirSync("./").filter((folder) => folder.startsWith("server-"));
+
 	var user_infos = users.map((user) => {
 		if (fs.existsSync(`${user}/account_info.json`)) {
 			return {
@@ -858,11 +1317,16 @@ global_app.get("/api/servers", async (req, res) => {
 			};
 		}
 	});
+
 	res.json(user_infos);
 });
 
-global_app.get("/api/running-servers", async (req, res) => {
-	res.json(ports);
+global_app.post("/api/add_server", async (req, res) => {
+	const slug = "server-" + generateSlug();
+	res.end(slug);
+	await start_everything(slug, true, false);
+
+	emit_server_info();
 });
 
 const IS_RAILWAY = !!process.env.RAILWAY_ENVIRONMENT_NAME;
@@ -870,20 +1334,24 @@ const RAILWAY_PORT = parseInt(process.env.PORT) || 3000;
 const RAILWAY_HOST = IS_RAILWAY ? '0.0.0.0' : 'localhost';
 
 global_server.listen(RAILWAY_PORT, RAILWAY_HOST, () => {
-	console.log(`✓ Dashboard: http://localhost:${RAILWAY_PORT}`);
+	console.log(`Now listening to: http://localhost:${RAILWAY_PORT}`);
 	if (!IS_RAILWAY) {
-		setTimeout(() => open(`http://localhost:${RAILWAY_PORT}`).catch(() => {}), 500);
+		open(`http://localhost:${RAILWAY_PORT}`);
 	}
+
 	emit_server_info();
 });
 
 rl.input.on("keypress", async (char, key) => {
 	if (key.name === "c" && key.ctrl) {
-		console.log("Exiting...");
+		console.log({ type: "DebugMessage", message: `CTRL + C was pressed. Exiting now.` });
 		rl.close();
 		process.exit(0);
 	}
+
 	if (key.name === "u") {
-		console.log(`Dashboard: http://localhost:${RAILWAY_PORT}`);
+		console.log(`--------------------------`);
+		console.log(`http://localhost:${RAILWAY_PORT}`);
+		console.log(`--------------------------`);
 	}
 });
