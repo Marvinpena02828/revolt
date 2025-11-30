@@ -951,12 +951,12 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		return await sendMessageDirect(id, content);
 	}
 
-	// Bot Web Dashboard
-	app.get("/", (req, res) => {
+	// Bot Login Page - Opens in iframe
+	app.get("/login", (req, res) => {
 		res.send(`<!DOCTYPE html>
 <html>
 <head>
-	<title>Revolt Bot - ${original_username}</title>
+	<title>Revolt Login</title>
 	<style>
 		* { margin: 0; padding: 0; }
 		body { font-family: Arial; background: #1a1a1a; height: 100vh; }
@@ -972,22 +972,142 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 <body>
 	<div class="container">
 		<div class="header">
-			<h2>🤖 Revolt Bot - ${original_username}</h2>
-			<p>Status: <span id="status" style="color: #4CAF50;">Connecting...</span></p>
-			<p><a href="#" onclick="location.reload()">🔄 Reload</a></p>
+			<h2>🔐 Login to Revolt</h2>
+			<p>Login with your Revolt account. Once logged in, come back to the dashboard.</p>
+			<p><a href="/">← Back to Dashboard</a></p>
 		</div>
 		<iframe src="https://revolt.onech.at/"><\/iframe>
 	</div>
+</body>
+</html>`);
+	});
+
+	// Bot Web Dashboard
+	app.get("/", (req, res) => {
+		res.send(`<!DOCTYPE html>
+<html>
+<head>
+	<title>Revolt Bot - ${original_username}</title>
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body { font-family: 'Segoe UI', Arial; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #fff; padding: 20px; }
+		.container { max-width: 1200px; margin: 0 auto; }
+		.header { background: rgba(0,0,0,0.5); padding: 20px; border-radius: 12px; border-left: 4px solid #4CAF50; margin-bottom: 20px; }
+		.header h1 { color: #4CAF50; margin-bottom: 10px; font-size: 28px; }
+		.header p { color: #aaa; margin-bottom: 5px; }
+		.status { color: #4CAF50; font-weight: bold; }
+		.status.off { color: #f44336; }
+		.buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+		.btn { background: #4CAF50; color: #fff; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+		.btn:hover { background: #45a049; }
+		.btn.primary { background: #5865F2; }
+		.btn.primary:hover { background: #4752C4; }
+		.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+		.card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 20px; border-radius: 12px; backdrop-filter: blur(10px); }
+		.card h2 { color: #4CAF50; margin-bottom: 15px; font-size: 18px; }
+		.card p { color: #aaa; line-height: 1.6; margin-bottom: 10px; font-size: 13px; }
+		.info-box { background: rgba(76, 175, 80, 0.1); border-left: 4px solid #4CAF50; padding: 15px; border-radius: 6px; margin-top: 15px; }
+		.info-box p { color: #aaa; margin: 5px 0; font-size: 12px; }
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1>🤖 Revolt Bot - ${original_username}</h1>
+			<p>Bot Version: <strong>v4.26.2025.1128am-MAX-SPEED</strong></p>
+			<p>Status: <span id="status" class="status">🟢 Connecting...</span></p>
+		</div>
+
+		<div class="buttons">
+			<button class="btn primary" onclick="openLogin()">🔐 Open Login Tab</button>
+			<button class="btn" onclick="location.reload()">🔄 Reload Dashboard</button>
+		</div>
+
+		<div class="grid">
+			<div class="card">
+				<h2>📋 Setup Instructions</h2>
+				<p><strong>Step 1:</strong> Click "🔐 Open Login Tab" button above</p>
+				<p><strong>Step 2:</strong> Login sa Revolt account mo</p>
+				<p><strong>Step 3:</strong> Once logged in, come back to this dashboard</p>
+				<p><strong>Step 4:</strong> Bot will connect automatically - check logs</p>
+				<div class="info-box">
+					<p>✅ Bot will auto-respond sa channels</p>
+					<p>✅ 5x FASTER execution speed</p>
+					<p>✅ Real-time logging enabled</p>
+				</div>
+			</div>
+
+			<div class="card">
+				<h2>📊 Bot Info</h2>
+				<p><strong>Username:</strong> <span id="username">Waiting...</span></p>
+				<p><strong>Servers:</strong> <span id="servers">0</span></p>
+				<p><strong>Channels:</strong> <span id="channels">0</span></p>
+				<div class="info-box">
+					<p>Connection logs appear below</p>
+				</div>
+			</div>
+
+			<div class="card">
+				<h2>⚡ Features</h2>
+				<p>✅ Per-server configuration</p>
+				<p>✅ Instant auto-responses</p>
+				<p>✅ Keyword matching</p>
+				<p>✅ Railway compatible</p>
+				<p>✅ 5x FASTER than others</p>
+			</div>
+		</div>
+
+		<div class="card" style="margin-top: 20px;">
+			<h2>📝 Connection Logs</h2>
+			<div id="logs" style="background: rgba(0,0,0,0.5); border-radius: 8px; padding: 15px; height: 300px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.6;">
+				<p style="color: #888;">Waiting for connection...</p>
+			</div>
+		</div>
+	</div>
+
 	<script src="/socket.io/socket.io.js"><\/script>
 	<script>
 		const socket = io();
+		let logs = [];
+
+		function openLogin() {
+			window.open('/login', '_blank', 'width=800,height=600');
+		}
+
 		socket.on('connect', () => {
 			document.getElementById('status').textContent = '🟢 Connected';
-			document.getElementById('status').style.color = '#4CAF50';
+			document.getElementById('status').className = 'status';
 		});
+
 		socket.on('disconnect', () => {
 			document.getElementById('status').textContent = '🔴 Disconnected';
-			document.getElementById('status').style.color = '#f44336';
+			document.getElementById('status').className = 'status off';
+		});
+
+		socket.on('bot_info', (data) => {
+			if (data.username) {
+				document.getElementById('username').textContent = data.username;
+			}
+		});
+
+		socket.on('serverInfo', (data) => {
+			if (data) {
+				document.getElementById('servers').textContent = data.servers?.length || 0;
+				document.getElementById('channels').textContent = data.channels?.length || 0;
+			}
+		});
+
+		socket.on('log', (data) => {
+			const timestamp = new Date(data.timestamp).toLocaleTimeString();
+			const msg = typeof data.log === 'object' ? (data.log.message || JSON.stringify(data.log)) : String(data.log);
+			const color = data.log?.type === 'ErrorMessage' ? '#f44336' : data.log?.type === 'BotMessage' ? '#4CAF50' : '#aaa';
+			
+			logs.unshift('<div style="color: ' + color + '"><small>[' + timestamp + ']</small> ' + msg + '</div>');
+			if (logs.length > 50) logs.pop();
+			
+			const logsEl = document.getElementById('logs');
+			logsEl.innerHTML = logs.join('');
+			logsEl.scrollTop = 0;
 		});
 	<\/script>
 </body>
