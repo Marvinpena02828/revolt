@@ -1334,7 +1334,7 @@ global_app.get("/", (req, res) => {
 		</div>
 	</div>
 
-	<script src="/socket.io/socket.io.js"></script>
+	<script src="/socket.io/socket.io.js"><\/script>
 	<script>
 		const socket = io();
 		let logMessages = [];
@@ -1366,14 +1366,14 @@ global_app.get("/", (req, res) => {
 				return;
 			}
 			el.innerHTML = servers.map(s => {
-				const deleteBtn = '<button class="btn btn-delete" onclick="deleteBot('${s.folder}')">Delete</button>';
-				return '<div class="bot-item">' +
-					'<div class="bot-info">' +
-						'<div class="bot-name">' + (s.username || s.folder) + '</div>' +
-						'<div class="bot-status"><span class="status ' + (s.is_running ? '' : 'off') + '">' + (s.is_running ? '🟢 Connected' : '🔴 Offline') + '</span></div>' +
-					'</div>' +
-					deleteBtn +
-				'</div>';
+				const deleteBtn = \`<button class="btn btn-delete" onclick="deleteBot('\${s.folder}')">Delete</button>\`;
+				return \`<div class="bot-item">
+					<div class="bot-info">
+						<div class="bot-name">\${s.username || s.folder}</div>
+						<div class="bot-status"><span class="status \${s.is_running ? '' : 'off'}">\${s.is_running ? '🟢 Connected' : '🔴 Offline'}</span></div>
+					</div>
+					\${deleteBtn}
+				</div>\`;
 			}).join('');
 
 			// Load bot server info to get servers
@@ -1399,24 +1399,24 @@ global_app.get("/", (req, res) => {
 			botServers.forEach(server => {
 				const serverId = server._id;
 				const serverName = server.name || server._id;
-				html += '<div class="server-item">' +
-					'<div class="server-name">🔹 ' + serverName + '</div>' +
-					'<div class="config-form">' +
-						'<div class="form-group">' +
-							'<label>Claim Command (e.g., /claim 1, click here)</label>' +
-							'<input type="text" id="cmd_' + serverId + '" placeholder="e.g., /claim 1" style="width: 100%;">' +
-						'</div>' +
-						'<div class="form-group">' +
-							'<label>Response Template (e.g., Ticket: 12345)</label>' +
-							'<input type="text" id="resp_' + serverId + '" placeholder="e.g., Ticket: 12345" style="width: 100%;">' +
-						'</div>' +
-						'<div style="display: flex; gap: 10px; margin-top: 10px;">' +
-							'<button class="btn btn-save" onclick="saveServerConfig(\'' + serverId + '\')">💾 Save Config</button>' +
-							'<button class="btn btn-clear" onclick="clearServerConfig(\'' + serverId + '\')">🗑️ Clear</button>' +
-						'</div>' +
-						'<div id="status_' + serverId + '" class="config-status" style="display:none;"></div>' +
-					'</div>' +
-				'</div>';
+				html += \`<div class="server-item">
+					<div class="server-name">🔹 \${serverName}</div>
+					<div class="config-form">
+						<div class="form-group">
+							<label>Claim Command (e.g., /claim 1, click here)</label>
+							<input type="text" id="cmd_\${serverId}" placeholder="e.g., /claim 1" style="width: 100%;">
+						</div>
+						<div class="form-group">
+							<label>Response Template (e.g., Ticket: 12345)</label>
+							<input type="text" id="resp_\${serverId}" placeholder="e.g., Ticket: 12345" style="width: 100%;">
+						</div>
+						<div style="display: flex; gap: 10px; margin-top: 10px;">
+							<button class="btn btn-save" onclick="saveServerConfig('\${serverId}')">💾 Save Config</button>
+							<button class="btn btn-clear" onclick="clearServerConfig('\${serverId}')">🗑️ Clear</button>
+						</div>
+						<div id="status_\${serverId}" class="config-status" style="display:none;"></div>
+					</div>
+				</div>\`;
 			});
 
 			panel.innerHTML = html;
@@ -1495,7 +1495,7 @@ global_app.get("/", (req, res) => {
 			logEl.innerHTML = logMessages.join('');
 			logEl.scrollTop = 0;
 		});
-	</script>
+	<\/script>
 </body>
 </html>`);
 });
@@ -1524,7 +1524,7 @@ global_app.get("/login", (req, res) => {
 			<h2>🔐 Revolt Bot Account Login</h2>
 			<p>Login with your Revolt account. <a href="/">← Back to Dashboard</a></p>
 		</div>
-		<iframe src="https://revolt.onech.at/"></iframe>
+		<iframe src="https://revolt.onech.at/"><\/iframe>
 	</div>
 </body>
 </html>`);
@@ -1534,7 +1534,7 @@ global_app.get("/login", (req, res) => {
 global_app.post("/api/server", async (req, res) => {
 	if (!req.query.server) return res.end("Server required");
 	if (ports[req.query.server]) return res.end("Already started");
-	await start_everything(req.query.server, false, true);  // Added true to start immediately
+	await start_everything(req.query.server, false, true);
 	emit_server_info();
 	res.end("Starting");
 });
@@ -1554,7 +1554,7 @@ global_app.delete("/api/server", async (req, res) => {
 global_app.post("/api/add_server", async (req, res) => {
 	const slug = "server-" + generateSlug();
 	res.end(slug);
-	await start_everything(slug, true, true);  // Changed to true so bot starts immediately
+	await start_everything(slug, true, true);
 	emit_server_info();
 });
 
