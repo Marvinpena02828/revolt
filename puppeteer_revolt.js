@@ -978,6 +978,13 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		</div>
 		<iframe src="https://revolt.onech.at/"><\/iframe>
 	</div>
+	<script>
+		// Auto-detect and redirect if on Railway
+		if (window.location.hostname !== 'localhost') {
+			// On Railway - this login tab opened correctly
+			console.log('✅ Login page opened on Railway:', window.location.hostname);
+		}
+	<\/script>
 </body>
 </html>`);
 	});
@@ -1064,6 +1071,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		let logs = [];
 
 		function openLogin() {
+			// Use relative path - works on both localhost and Railway
 			window.open('/login', '_blank', 'width=900,height=700');
 		}
 
