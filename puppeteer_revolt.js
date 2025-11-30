@@ -951,7 +951,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		return await sendMessageDirect(id, content);
 	}
 
-	// Bot Login Page - Opens in iframe
+	// ✅ BOT LOGIN PAGE - Opens in popup
 	app.get("/login", (req, res) => {
 		res.send(`<!DOCTYPE html>
 <html>
@@ -964,7 +964,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		.header { background: #2a2a2a; padding: 15px; border-bottom: 2px solid #4CAF50; color: #fff; }
 		.header h2 { color: #4CAF50; margin-bottom: 5px; }
 		.header p { color: #aaa; font-size: 13px; }
-		a { color: #4CAF50; text-decoration: none; font-weight: bold; }
+		a { color: #4CAF50; text-decoration: none; font-weight: bold; cursor: pointer; }
 		a:hover { text-decoration: underline; }
 		iframe { flex: 1; border: none; width: 100%; }
 	</style>
@@ -973,8 +973,8 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	<div class="container">
 		<div class="header">
 			<h2>🔐 Login to Revolt</h2>
-			<p>Login with your Revolt account. Once logged in, close this tab and go back to dashboard.</p>
-			<p><a href="javascript:window.close()">✕ Close Tab</a></p>
+			<p>Login with your Revolt account. Once done, close this tab and go back.</p>
+			<p><a onclick="window.close()">✕ Close Tab</a></p>
 		</div>
 		<iframe src="https://revolt.onech.at/"><\/iframe>
 	</div>
@@ -982,10 +982,8 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 </html>`);
 	});
 
-	// Bot Web Dashboard
+	// ✅ BOT DASHBOARD
 	app.get("/", (req, res) => {
-		const host = req.get('host');
-		const protocol = req.protocol;
 		res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -997,7 +995,8 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		.header { background: rgba(0,0,0,0.5); padding: 20px; border-radius: 12px; border-left: 4px solid #4CAF50; margin-bottom: 20px; }
 		.header h1 { color: #4CAF50; margin-bottom: 10px; font-size: 28px; }
 		.header p { color: #aaa; margin-bottom: 5px; }
-		.status { color: #4CAF50; font-weight: bold; }
+		.status { font-weight: bold; }
+		.status.on { color: #4CAF50; }
 		.status.off { color: #f44336; }
 		.buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
 		.btn { background: #4CAF50; color: #fff; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.3s; }
@@ -1005,65 +1004,57 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		.btn.primary { background: #5865F2; }
 		.btn.primary:hover { background: #4752C4; }
 		.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-		.card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 20px; border-radius: 12px; backdrop-filter: blur(10px); }
-		.card h2 { color: #4CAF50; margin-bottom: 15px; font-size: 18px; }
+		.card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 20px; border-radius: 12px; }
+		.card h2 { color: #4CAF50; margin-bottom: 15px; }
 		.card p { color: #aaa; line-height: 1.6; margin-bottom: 10px; font-size: 13px; }
-		.info-box { background: rgba(76, 175, 80, 0.1); border-left: 4px solid #4CAF50; padding: 15px; border-radius: 6px; margin-top: 15px; }
-		.info-box p { color: #aaa; margin: 5px 0; font-size: 12px; }
+		.info { background: rgba(76,175,80,0.1); border-left: 4px solid #4CAF50; padding: 12px; border-radius: 6px; margin-top: 10px; }
+		.logs { background: rgba(0,0,0,0.5); border-radius: 8px; padding: 15px; height: 300px; overflow-y: auto; font-family: monospace; font-size: 11px; line-height: 1.6; }
 	</style>
 </head>
 <body>
 	<div class="container">
 		<div class="header">
 			<h1>🤖 Revolt Bot - ${original_username}</h1>
-			<p>Bot Version: <strong>v4.26.2025.1128am-MAX-SPEED</strong></p>
-			<p>Status: <span id="status" class="status">🟢 Connecting...</span></p>
+			<p>Status: <span id="status" class="status on">🟢 Connecting...</span></p>
 		</div>
 
 		<div class="buttons">
 			<button class="btn primary" onclick="openLogin()">🔐 Open Login Tab</button>
-			<button class="btn" onclick="location.reload()">🔄 Reload Dashboard</button>
+			<button class="btn" onclick="location.reload()">🔄 Reload</button>
 		</div>
 
 		<div class="grid">
 			<div class="card">
-				<h2>📋 Setup Instructions</h2>
-				<p><strong>Step 1:</strong> Click "🔐 Open Login Tab" button above</p>
-				<p><strong>Step 2:</strong> Login sa Revolt account mo</p>
-				<p><strong>Step 3:</strong> Once logged in, come back to this dashboard</p>
-				<p><strong>Step 4:</strong> Bot will connect automatically - check logs</p>
-				<div class="info-box">
-					<p>✅ Bot will auto-respond sa channels</p>
-					<p>✅ 5x FASTER execution speed</p>
-					<p>✅ Real-time logging enabled</p>
+				<h2>📋 Setup</h2>
+				<p>1. Click "🔐 Open Login Tab"</p>
+				<p>2. Login sa Revolt</p>
+				<p>3. Close login tab</p>
+				<p>4. Bot connects! ✅</p>
+				<div class="info">
+					<p>✅ 5x FASTER</p>
+					<p>✅ Auto-respond</p>
 				</div>
 			</div>
 
 			<div class="card">
 				<h2>📊 Bot Info</h2>
-				<p><strong>Username:</strong> <span id="username">Waiting...</span></p>
-				<p><strong>Servers:</strong> <span id="servers">0</span></p>
-				<p><strong>Channels:</strong> <span id="channels">0</span></p>
-				<div class="info-box">
-					<p>Connection logs appear below</p>
-				</div>
+				<p>User: <strong id="username">Waiting...</strong></p>
+				<p>Servers: <strong id="servers">0</strong></p>
+				<p>Channels: <strong id="channels">0</strong></p>
 			</div>
 
 			<div class="card">
 				<h2>⚡ Features</h2>
-				<p>✅ Per-server configuration</p>
-				<p>✅ Instant auto-responses</p>
+				<p>✅ Per-server config</p>
+				<p>✅ Auto-responses</p>
 				<p>✅ Keyword matching</p>
-				<p>✅ Railway compatible</p>
-				<p>✅ 5x FASTER than others</p>
+				<p>✅ 5000 nonce pool</p>
 			</div>
 		</div>
 
 		<div class="card" style="margin-top: 20px;">
-			<h2>📝 Connection Logs</h2>
-			<div id="logs" style="background: rgba(0,0,0,0.5); border-radius: 8px; padding: 15px; height: 300px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.6;">
-				<p style="color: #888;">Waiting for connection...</p>
-			</div>
+			<h2>📝 Logs</h2>
+			<div id="logs" class="logs"><p style="color: #888;">Waiting...</p></div>
 		</div>
 	</div>
 
@@ -1071,17 +1062,14 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	<script>
 		const socket = io();
 		let logs = [];
-		const currentUrl = window.location.href;
-		const baseUrl = currentUrl.split('/').slice(0, 3).join('/'); // Get protocol + host
-		const loginUrl = baseUrl + "/login";
 
 		function openLogin() {
-			window.open(loginUrl, '_blank', 'width=900,height=700');
+			window.open('/login', '_blank', 'width=900,height=700');
 		}
 
 		socket.on('connect', () => {
 			document.getElementById('status').textContent = '🟢 Connected';
-			document.getElementById('status').className = 'status';
+			document.getElementById('status').className = 'status on';
 		});
 
 		socket.on('disconnect', () => {
@@ -1090,9 +1078,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		});
 
 		socket.on('bot_info', (data) => {
-			if (data.username) {
-				document.getElementById('username').textContent = data.username;
-			}
+			if (data.username) document.getElementById('username').textContent = data.username;
 		});
 
 		socket.on('serverInfo', (data) => {
@@ -1103,16 +1089,16 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		});
 
 		socket.on('log', (data) => {
-			const timestamp = new Date(data.timestamp).toLocaleTimeString();
+			const time = new Date(data.timestamp).toLocaleTimeString();
 			const msg = typeof data.log === 'object' ? (data.log.message || JSON.stringify(data.log)) : String(data.log);
 			const color = data.log?.type === 'ErrorMessage' ? '#f44336' : data.log?.type === 'BotMessage' ? '#4CAF50' : '#aaa';
 			
-			logs.unshift('<div style="color: ' + color + '"><small>[' + timestamp + ']</small> ' + msg + '</div>');
+			logs.unshift('<div style="color:' + color + '"><small>[' + time + ']</small> ' + msg + '</div>');
 			if (logs.length > 50) logs.pop();
 			
-			const logsEl = document.getElementById('logs');
-			logsEl.innerHTML = logs.join('');
-			logsEl.scrollTop = 0;
+			const el = document.getElementById('logs');
+			el.innerHTML = logs.join('');
+			el.scrollTop = 0;
 		});
 	<\/script>
 </body>
