@@ -523,12 +523,21 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	}
 
 	async function initialize_puppeteer() {
-		try {
-			browser = await puppeteer.launch({
-				userDataDir: `./${IDENTIFIER_USER}/browser-userdata`,
-				headless: force_headful ? false : IS_HEADLESS,
-				args: ["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-web-security", "--disable-features=IsolateOrigins,site-per-process", "--disable-site-isolation-trials"],
-			});
+	try {
+		browser = await puppeteer.launch({
+			userDataDir: `./${IDENTIFIER_USER}/browser-userdata`,
+			executablePath: '/usr/bin/chromium-browser', // ✅ Use system chromium
+			headless: force_headful ? false : IS_HEADLESS,
+			args: [
+				"--disable-blink-features=AutomationControlled",
+				"--no-sandbox",
+				"--disable-setuid-sandbox",
+				"--disable-dev-shm-usage",
+				"--disable-web-security",
+				"--disable-features=IsolateOrigins,site-per-process",
+				"--disable-site-isolation-trials",
+			],
+		});
 			const page = await browser.newPage();
 
 			page.setDefaultNavigationTimeout(60000);
