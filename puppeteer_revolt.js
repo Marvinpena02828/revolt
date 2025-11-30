@@ -1292,9 +1292,281 @@ global_io.on("connection", () => {
 
 global_app.use(express.static(path.join(__dirname, "public/multi")));
 
-// Root route - redirect to Revolt login
+// Root route - Bot Control Panel with Status
 global_app.get("/", (req, res) => {
-	res.redirect(301, "https://revolt.onech.at/login");
+	res.send(`
+		<!DOCTYPE html>
+		<html>
+		<head>
+			<title>Revolt Bot Control Panel</title>
+			<meta charset="UTF-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+			<style>
+				* { margin: 0; padding: 0; box-sizing: border-box; }
+				body { 
+					font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+					background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+					color: #fff;
+					padding: 20px;
+				}
+				.container { max-width: 1200px; margin: 0 auto; }
+				.header { text-align: center; margin-bottom: 40px; }
+				h1 { font-size: 32px; margin-bottom: 10px; }
+				.subtitle { color: #888; font-size: 14px; }
+				
+				.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+				.card { 
+					background: rgba(255,255,255,0.05);
+					border: 1px solid rgba(255,255,255,0.1);
+					border-radius: 12px;
+					padding: 20px;
+					backdrop-filter: blur(10px);
+				}
+				
+				.status-box { 
+					background: rgba(76, 175, 80, 0.1);
+					border: 2px solid #4CAF50;
+					border-radius: 8px;
+					padding: 15px;
+					margin: 15px 0;
+				}
+				.status-box.connecting { 
+					border-color: #FFC107;
+					background: rgba(255, 193, 7, 0.1);
+				}
+				.status-box.error { 
+					border-color: #f44336;
+					background: rgba(244, 67, 54, 0.1);
+				}
+				
+				.status-indicator { 
+					display: inline-block;
+					width: 12px;
+					height: 12px;
+					border-radius: 50%;
+					margin-right: 8px;
+					animation: pulse 2s infinite;
+				}
+				.status-indicator.connected { background: #4CAF50; }
+				.status-indicator.connecting { background: #FFC107; }
+				.status-indicator.disconnected { background: #f44336; animation: none; }
+				
+				@keyframes pulse {
+					0%, 100% { opacity: 1; }
+					50% { opacity: 0.5; }
+				}
+				
+				.servers-list { 
+					display: grid;
+					grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+					gap: 15px;
+					margin-top: 20px;
+				}
+				.server-card {
+					background: rgba(255,255,255,0.08);
+					border: 1px solid rgba(255,255,255,0.15);
+					border-radius: 8px;
+					padding: 15px;
+					transition: all 0.3s ease;
+				}
+				.server-card:hover { 
+					background: rgba(255,255,255,0.12);
+					border-color: rgba(76, 175, 80, 0.5);
+				}
+				.server-card h3 { margin-bottom: 10px; font-size: 14px; }
+				.server-status { 
+					font-size: 12px;
+					color: #aaa;
+					margin: 8px 0;
+				}
+				
+				button {
+					background: #4CAF50;
+					color: white;
+					border: none;
+					padding: 10px 16px;
+					border-radius: 6px;
+					cursor: pointer;
+					font-size: 14px;
+					margin-top: 10px;
+					transition: all 0.3s;
+				}
+				button:hover { 
+					background: #45a049;
+					transform: translateY(-2px);
+				}
+				button.danger { background: #f44336; }
+				button.danger:hover { background: #da190b; }
+				
+				.logs { 
+					background: rgba(0,0,0,0.3);
+					border: 1px solid rgba(255,255,255,0.1);
+					border-radius: 8px;
+					padding: 15px;
+					height: 300px;
+					overflow-y: auto;
+					font-family: 'Courier New', monospace;
+					font-size: 12px;
+					margin-top: 20px;
+				}
+				.log-entry { 
+					padding: 5px 0;
+					border-bottom: 1px solid rgba(255,255,255,0.05);
+				}
+				.log-debug { color: #aaa; }
+				.log-success { color: #4CAF50; }
+				.log-error { color: #f44336; }
+				
+				.actions {
+					display: flex;
+					gap: 10px;
+					margin-top: 15px;
+				}
+				
+				.full-width { grid-column: 1 / -1; }
+			</style>
+		</head>
+		<body>
+			<div class="container">
+				<div class="header">
+					<h1>🤖 Revolt Bot Control Panel</h1>
+					<p class="subtitle">Bot Management & Monitoring</p>
+				</div>
+
+				<div class="grid">
+					<div class="card">
+						<h2>Bot Status</h2>
+						<div class="status-box" id="botStatus">
+							<span class="status-indicator connecting"></span>
+							<span>Initializing...</span>
+						</div>
+						<p style="font-size: 12px; color: #aaa; margin-top: 10px;">
+							Bot Version: <strong id="botVersion">Loading...</strong>
+						</p>
+					</div>
+
+					<div class="card">
+						<h2>Server Management</h2>
+						<p style="font-size: 12px; color: #aaa; margin-bottom: 15px;">
+							Running Instances: <strong id="serverCount">0</strong>
+						</p>
+						<button onclick="addNewServer()">+ New Bot Instance</button>
+					</div>
+				</div>
+
+				<div class="card full-width">
+					<h2>Active Servers</h2>
+					<div class="servers-list" id="serversList">
+						<p style="color: #888;">No servers running yet...</p>
+					</div>
+				</div>
+
+				<div class="card full-width">
+					<h2>Activity Log</h2>
+					<div class="logs" id="logs"></div>
+				</div>
+			</div>
+
+			<script src="/socket.io/socket.io.js"></script>
+			<script>
+				const socket = io();
+				const logs = [];
+				const maxLogs = 50;
+
+				function addLog(type, message) {
+					const timestamp = new Date().toLocaleTimeString();
+					logs.unshift({ type, message, timestamp });
+					if (logs.length > maxLogs) logs.pop();
+					updateLogsUI();
+				}
+
+				function updateLogsUI() {
+					const logsEl = document.getElementById('logs');
+					logsEl.innerHTML = logs.map(log => {
+						const className = log.type === 'error' ? 'log-error' : 
+										   log.type === 'success' ? 'log-success' : 'log-debug';
+						return \`<div class="log-entry \${className}">[\\${log.timestamp}] \\${log.message}</div>\`;
+					}).join('');
+					logsEl.scrollTop = 0;
+				}
+
+				socket.on('bot_version', (version) => {
+					document.getElementById('botVersion').textContent = version;
+					addLog('success', 'Connected to bot server');
+				});
+
+				socket.on('servers', (servers) => {
+					const serverCount = servers?.length || 0;
+					document.getElementById('serverCount').textContent = serverCount;
+
+					if (!servers || servers.length === 0) {
+						document.getElementById('serversList').innerHTML = '<p style="color: #888; grid-column: 1/-1;">No servers running yet</p>';
+						return;
+					}
+
+					document.getElementById('serversList').innerHTML = servers.map(server => \`
+						<div class="server-card">
+							<h3>\\${server.username || server.folder}</h3>
+							<div class="server-status">
+								Status: <span class="status-indicator \\${server.is_running ? 'connected' : 'disconnected'}"></span>
+								\\${server.is_running ? 'Running' : 'Stopped'}
+							</div>
+							<div class="server-status">
+								Port: \\${server.port || 'N/A'}
+							</div>
+							<div class="server-status">
+								Mode: \\${server.is_headless ? 'Headless' : 'Headful'}
+							</div>
+							<div class="actions">
+								\\${server.port ? \`<button onclick="window.open('http://localhost:\\${server.port}')">Dashboard</button>\` : ''}
+								<button class="danger" onclick="deleteServer('\\${server.folder}')">Delete</button>
+							</div>
+						</div>
+					\`).join('');
+				});
+
+				socket.on('bot_info', (info) => {
+					addLog('success', \`Bot logged in as: \\${info.username}\`);
+					updateBotStatus('connected', 'Connected to Revolt');
+				});
+
+				socket.on('log', (log) => {
+					const type = log.log?.type || 'debug';
+					const message = log.log?.message || JSON.stringify(log.log);
+					addLog(type.toLowerCase(), message);
+				});
+
+				function updateBotStatus(status, message) {
+					const statusEl = document.getElementById('botStatus');
+					const indicator = statusEl.querySelector('.status-indicator');
+					const text = statusEl.querySelector('span:last-child');
+					
+					statusEl.className = 'status-box ' + status;
+					indicator.className = 'status-indicator ' + status;
+					text.textContent = message;
+				}
+
+				function addNewServer() {
+					fetch('/api/add_server', { method: 'POST' })
+						.then(() => addLog('success', 'Creating new bot instance...'))
+						.catch(err => addLog('error', 'Failed to create server: ' + err));
+				}
+
+				function deleteServer(folder) {
+					if (confirm('Delete this bot instance? This cannot be undone.')) {
+						fetch('/api/server?server=' + folder, { method: 'DELETE' })
+							.then(() => addLog('success', 'Server deleted: ' + folder))
+							.catch(err => addLog('error', 'Failed to delete: ' + err));
+					}
+				}
+
+				// Initial request
+				addLog('info', 'Connecting to bot server...');
+				socket.emit('request_info');
+			</script>
+		</body>
+		</html>
+	`);
 });
 
 global_app.post("/api/server", async (req, res) => {
