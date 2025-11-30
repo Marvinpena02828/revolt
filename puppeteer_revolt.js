@@ -1397,22 +1397,24 @@ global_app.get("/", (req, res) => {
 
 			let html = '';
 			botServers.forEach(server => {
+				const serverId = server._id;
+				const serverName = server.name || server._id;
 				html += '<div class="server-item">' +
-					'<div class="server-name">🔹 ' + (server.name || server._id) + '</div>' +
+					'<div class="server-name">🔹 ' + serverName + '</div>' +
 					'<div class="config-form">' +
 						'<div class="form-group">' +
 							'<label>Claim Command (e.g., /claim 1, click here)</label>' +
-							'<input type="text" id="cmd_' + server._id + '" placeholder="e.g., /claim 1" style="width: 100%;">' +
+							'<input type="text" id="cmd_' + serverId + '" placeholder="e.g., /claim 1" style="width: 100%;">' +
 						'</div>' +
 						'<div class="form-group">' +
 							'<label>Response Template (e.g., Ticket: 12345)</label>' +
-							'<input type="text" id="resp_' + server._id + '" placeholder="e.g., Ticket: 12345" style="width: 100%;">' +
+							'<input type="text" id="resp_' + serverId + '" placeholder="e.g., Ticket: 12345" style="width: 100%;">' +
 						'</div>' +
 						'<div style="display: flex; gap: 10px; margin-top: 10px;">' +
-							'<button class="btn btn-save" onclick="saveServerConfig(\'' + server._id + '\')">💾 Save Config</button>' +
-							'<button class="btn btn-clear" onclick="clearServerConfig(\'' + server._id + '\')">🗑️ Clear</button>' +
+							'<button class="btn btn-save" onclick="saveServerConfig(\'' + serverId + '\')">💾 Save Config</button>' +
+							'<button class="btn btn-clear" onclick="clearServerConfig(\'' + serverId + '\')">🗑️ Clear</button>' +
 						'</div>' +
-						'<div id="status_' + server._id + '" class="config-status" style="display:none;"></div>' +
+						'<div id="status_' + serverId + '" class="config-status" style="display:none;"></div>' +
 					'</div>' +
 				'</div>';
 			});
@@ -1421,12 +1423,13 @@ global_app.get("/", (req, res) => {
 
 			// Load existing configs
 			botServers.forEach(server => {
-				fetch('/api/server_config/' + server._id)
+				const serverId = server._id;
+				fetch('/api/server_config/' + serverId)
 					.then(r => r.json())
 					.then(data => {
 						if (data.config) {
-							document.getElementById('cmd_' + server._id).value = data.config.command || '';
-							document.getElementById('resp_' + server._id).value = data.config.responseTemplate || '';
+							document.getElementById('cmd_' + serverId).value = data.config.command || '';
+							document.getElementById('resp_' + serverId).value = data.config.responseTemplate || '';
 						}
 					})
 					.catch(() => {});
