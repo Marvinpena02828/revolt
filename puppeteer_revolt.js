@@ -1289,6 +1289,91 @@ global_io.on("connection", () => {
 
 global_app.use(express.static(path.join(__dirname, "public/multi")));
 
+// Main Dashboard
+global_app.get("/", (req, res) => {
+	res.send(`
+		<!DOCTYPE html>
+		<html>
+		<head>
+			<title>Revolt Bot Control Panel</title>
+			<style>
+				* { margin: 0; padding: 0; box-sizing: border-box; }
+				body { font-family: Arial; background: #1a1a1a; color: #fff; padding: 20px; }
+				.container { max-width: 1200px; margin: 0 auto; }
+				h1 { color: #4CAF50; margin-bottom: 20px; }
+				.buttons { display: flex; gap: 10px; margin-bottom: 30px; flex-wrap: wrap; }
+				.btn { background: #4CAF50; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; }
+				.btn:hover { background: #45a049; }
+				.btn.primary { background: #5865F2; }
+				.btn.primary:hover { background: #4752C4; }
+				.info-box { background: #2a2a2a; padding: 20px; border-radius: 8px; border-left: 4px solid #FFA500; margin-bottom: 20px; }
+				.info-box h3 { color: #FFA500; margin-bottom: 10px; }
+				.info-box p { color: #aaa; line-height: 1.6; margin-bottom: 10px; }
+				.servers { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-top: 20px; }
+				.card { background: #2a2a2a; padding: 15px; border-radius: 8px; border-left: 4px solid #4CAF50; }
+				.card h3 { margin-bottom: 10px; }
+				.status { display: inline-block; padding: 5px 10px; border-radius: 3px; font-size: 12px; background: #4CAF50; margin: 5px 0; }
+				.status.off { background: #f44336; }
+				.btn-small { padding: 8px 12px; font-size: 12px; margin-top: 10px; }
+			</style>
+		</head>
+		<body>
+			<div class="container">
+				<h1>🤖 Revolt Bot Control Panel</h1>
+				
+				<div class="buttons">
+					<button class="btn primary" onclick="window.location.href='/login'">↗ Login to Revolt</button>
+					<button class="btn" onclick="window.location.href='/revolt'">💬 Open Revolt Chat</button>
+					<button class="btn" onclick="addBot()">+ Add Bot Instance</button>
+				</div>
+
+				<div class="info-box">
+					<h3>⚠️ First Time Setup</h3>
+					<p><strong>Step 1:</strong> Click "↗ Login to Revolt" button above</p>
+					<p><strong>Step 2:</strong> Login with your Revolt account in the page that opens</p>
+					<p><strong>Step 3:</strong> Come back to this dashboard</p>
+					<p><strong>Step 4:</strong> Click "+ Add Bot Instance" to create a bot</p>
+					<p><strong>Step 5:</strong> Bot will connect and start responding automatically!</p>
+				</div>
+
+				<div class="servers" id="servers">
+					<p style="color: #888;">No bot instances yet. Click "+ Add Bot Instance" to start.</p>
+				</div>
+			</div>
+
+			<script src="/socket.io/socket.io.js"></script>
+			<script>
+				const socket = io();
+
+				function addBot() {
+					fetch('/api/add_server', { method: 'POST' })
+						.then(() => alert('Bot instance creating... Please wait 5 seconds then refresh'))
+						.catch(err => alert('Error: ' + err));
+				}
+
+				function deleteBot(folder) {
+					if (confirm('Delete this bot?')) {
+						fetch('/api/server?server=' + folder, { method: 'DELETE' })
+							.then(() => location.reload())
+							.catch(err => alert('Error: ' + err));
+					}
+				}
+
+				socket.on('servers', (servers) => {
+					const el = document.getElementById('servers');
+					if (!servers || !servers.length) {
+						el.innerHTML = '<p style="color: #888;">No bot instances yet.</p>';
+						return;
+					}
+
+					el.innerHTML = servers.map(s => '<div class="card"><h3>' + (s.username || s.folder) + '</h3><div class="status ' + (s.is_running ? '' : 'off') + '">' + (s.is_running ? '🟢 Connected' : '🔴 Offline') + '</div><p style="color: #aaa; font-size: 12px; margin-top: 10px;">Instance: ' + s.folder + '</p><button class="btn btn-small" onclick="deleteBot(\'' + s.folder + '\')" style="background: #f44336; width: 100%; margin-top: 10px;">Delete</button></div>').join('');
+				});
+			</script>
+		</body>
+		</html>
+	`);
+});
+
 global_app.post("/api/server", async (req, res) => {
 	if (!req.query.server) {
 		return res.end("Server is required");
@@ -1354,6 +1439,75 @@ global_app.post("/api/add_server", async (req, res) => {
 	await start_everything(slug, true, false);
 
 	emit_server_info();
+});
+
+// Login page for Railway - open Revolt in iframe
+global_app.get("/login", (req, res) => {
+	res.send(`
+		<!DOCTYPE html>
+		<html>
+		<head>
+			<title>Revolt Bot - Login</title>
+			<style>
+				* { margin: 0; padding: 0; box-sizing: border-box; }
+				body { font-family: Arial; background: #1a1a1a; color: #fff; }
+				.container { max-width: 1400px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; }
+				.header { background: #2a2a2a; padding: 15px; border-bottom: 2px solid #4CAF50; }
+				.header h1 { color: #4CAF50; margin-bottom: 5px; }
+				.header p { color: #aaa; font-size: 14px; }
+				iframe { flex: 1; border: none; width: 100%; }
+				.footer { background: #2a2a2a; padding: 15px; text-align: center; color: #aaa; font-size: 12px; border-top: 1px solid #444; }
+			</style>
+		</head>
+		<body>
+			<div class="container">
+				<div class="header">
+					<h1>🤖 Revolt Bot Login</h1>
+					<p>Login sa Revolt account mo sa iframe below. Once logged in, bot will auto-connect. Then go back to <a href="/" style="color: #4CAF50;">Dashboard</a></p>
+				</div>
+				<iframe src="https://revolt.onech.at/"></iframe>
+				<div class="footer">
+					<p>✅ Login successful? Go back to Dashboard at i-refresh. Bot should be connected na.</p>
+				</div>
+			</div>
+		</body>
+		</html>
+	`);
+});
+
+// Direct Revolt access
+global_app.get("/revolt", (req, res) => {
+	res.send(`
+		<!DOCTYPE html>
+		<html>
+		<head>
+			<title>Revolt</title>
+			<style>
+				* { margin: 0; padding: 0; box-sizing: border-box; }
+				html, body { width: 100%; height: 100%; overflow: hidden; }
+				iframe { width: 100%; height: 100%; border: none; }
+				.back-btn {
+					position: fixed;
+					top: 10px;
+					left: 10px;
+					z-index: 10000;
+					background: #4CAF50;
+					color: white;
+					border: none;
+					padding: 10px 15px;
+					border-radius: 4px;
+					cursor: pointer;
+					font-weight: bold;
+				}
+				.back-btn:hover { background: #45a049; }
+			</style>
+		</head>
+		<body>
+			<button class="back-btn" onclick="window.location.href='/'">← Dashboard</button>
+			<iframe src="https://revolt.onech.at/"></iframe>
+		</body>
+		</html>
+	`);
 });
 
 // FIX #1: Proper Railway port binding - AUTO OPEN REVOLT
