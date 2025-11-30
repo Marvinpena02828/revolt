@@ -951,6 +951,49 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		return await sendMessageDirect(id, content);
 	}
 
+	// Bot Web Dashboard
+	app.get("/", (req, res) => {
+		res.send(`<!DOCTYPE html>
+<html>
+<head>
+	<title>Revolt Bot - ${original_username}</title>
+	<style>
+		* { margin: 0; padding: 0; }
+		body { font-family: Arial; background: #1a1a1a; height: 100vh; }
+		.container { width: 100%; height: 100%; display: flex; flex-direction: column; }
+		.header { background: #2a2a2a; padding: 15px; border-bottom: 2px solid #4CAF50; color: #fff; }
+		.header h2 { color: #4CAF50; margin-bottom: 5px; }
+		.header p { color: #aaa; font-size: 13px; }
+		a { color: #4CAF50; text-decoration: none; font-weight: bold; }
+		a:hover { text-decoration: underline; }
+		iframe { flex: 1; border: none; width: 100%; }
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h2>🤖 Revolt Bot - ${original_username}</h2>
+			<p>Status: <span id="status" style="color: #4CAF50;">Connecting...</span></p>
+			<p><a href="#" onclick="location.reload()">🔄 Reload</a></p>
+		</div>
+		<iframe src="https://revolt.onech.at/"><\/iframe>
+	</div>
+	<script src="/socket.io/socket.io.js"><\/script>
+	<script>
+		const socket = io();
+		socket.on('connect', () => {
+			document.getElementById('status').textContent = '🟢 Connected';
+			document.getElementById('status').style.color = '#4CAF50';
+		});
+		socket.on('disconnect', () => {
+			document.getElementById('status').textContent = '🔴 Disconnected';
+			document.getElementById('status').style.color = '#f44336';
+		});
+	<\/script>
+</body>
+</html>`);
+	});
+
 	io.on("connection", (socket) => {
 		if (clientInfo.users) {
 			io.emit("bot_info", { username: clientInfo.users[clientInfo?.users.findIndex((user) => user.relationship == "User")].username, id: clientInfo.users[clientInfo?.users.findIndex((user) => user.relationship == "User")]._id });
