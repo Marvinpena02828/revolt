@@ -1292,6 +1292,45 @@ global_io.on("connection", () => {
 
 global_app.use(express.static(path.join(__dirname, "public/multi")));
 
+// Revolt Client Route - Direct access to Revolt
+global_app.get("/client", (req, res) => {
+	res.send(`
+		<!DOCTYPE html>
+		<html>
+		<head>
+			<title>Revolt</title>
+			<meta charset="UTF-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+			<style>
+				* { margin: 0; padding: 0; box-sizing: border-box; }
+				html, body { width: 100%; height: 100%; overflow: hidden; }
+				body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #000; }
+				iframe { width: 100%; height: 100%; border: none; display: block; }
+				.back-btn {
+					position: fixed;
+					top: 10px;
+					left: 10px;
+					z-index: 10000;
+					background: rgba(76, 175, 80, 0.8);
+					color: white;
+					border: none;
+					padding: 10px 15px;
+					border-radius: 4px;
+					cursor: pointer;
+					font-size: 12px;
+					font-weight: bold;
+				}
+				.back-btn:hover { background: rgba(76, 175, 80, 1); }
+			</style>
+		</head>
+		<body>
+			<button class="back-btn" onclick="window.location.href='/'">← Dashboard</button>
+			<iframe src="https://revolt.onech.at/" allow="camera; microphone; clipboard-read; clipboard-write; geolocation"></iframe>
+		</body>
+		</html>
+	`);
+});
+
 // Root route - Bot Control Panel with Status
 global_app.get("/", (req, res) => {
 	res.send(`
@@ -1454,6 +1493,26 @@ global_app.get("/", (req, res) => {
 					</div>
 				</div>
 
+				<div class="grid">
+					<div class="card">
+						<h2>Revolt Client</h2>
+						<p style="font-size: 12px; color: #aaa; margin-bottom: 15px;">
+							Access the Revolt chat client
+						</p>
+						<button onclick="window.location.href='/client'" style="background: #5865F2; margin-top: 20px;">→ Open Revolt</button>
+					</div>
+
+					<div class="card">
+						<h2>Instructions</h2>
+						<p style="font-size: 11px; color: #aaa; line-height: 1.6;">
+							<strong>1.</strong> Click "Open Revolt" to login<br>
+							<strong>2.</strong> Create bot instances here<br>
+							<strong>3.</strong> Bot will auto-respond in chat<br>
+							<strong>4.</strong> Monitor logs below
+						</p>
+					</div>
+				</div>
+
 				<div class="card full-width">
 					<h2>Active Servers</h2>
 					<div class="servers-list" id="serversList">
@@ -1505,7 +1564,7 @@ global_app.get("/", (req, res) => {
 					}
 
 					document.getElementById('serversList').innerHTML = servers.map(server => {
-						const dashboardBtn = server.port ? '<button onclick="window.open(\\'http://localhost:' + server.port + '\\')">Dashboard</button>' : '';
+						const dashboardBtn = server.port ? '<button onclick="copyPort(' + server.port + ')">📋 Copy Port (' + server.port + ')</button>' : '';
 						return '<div class="server-card">' +
 							'<h3>' + (server.username || server.folder) + '</h3>' +
 							'<div class="server-status">' +
@@ -1559,6 +1618,13 @@ global_app.get("/", (req, res) => {
 							.then(() => addLog('success', 'Server deleted: ' + folder))
 							.catch(err => addLog('error', 'Failed to delete: ' + err));
 					}
+				}
+
+				function copyPort(port) {
+					const text = 'http://localhost:' + port;
+					navigator.clipboard.writeText(text).then(() => {
+						alert('Copied to clipboard: ' + text + '\\n\\nAccess on your local machine at this URL');
+					});
 				}
 
 				// Initial request
