@@ -1292,6 +1292,29 @@ global_io.on("connection", () => {
 
 global_app.use(express.static(path.join(__dirname, "public/multi")));
 
+// Bot Dashboard Proxy - Access bot servers through main server
+global_app.get("/bot/:botFolder", async (req, res) => {
+	const botFolder = req.params.botFolder;
+	const port = ports[botFolder]?.port;
+	
+	if (!port) {
+		return res.status(404).send(`<h1>Bot '${botFolder}' not found or not running</h1><p><a href="/">← Back to Dashboard</a></p>`);
+	}
+
+	try {
+		const response = await fetch(`http://localhost:${port}/`, {
+			method: 'GET',
+			headers: { 'host': `localhost:${port}` },
+		});
+		const text = await response.text();
+		// Modify links in the response to go through proxy
+		const modified = text.replace(/href=["']\/([^"']*)/g, `href="/bot/${botFolder}/$1`);
+		res.send(modified);
+	} catch (error) {
+		res.status(500).send(`<h1>Error connecting to bot</h1><p>${error.message}</p><p><a href="/">← Back to Dashboard</a></p>`);
+	}
+});
+
 // Revolt Client Route - Direct access to Revolt
 global_app.get("/client", (req, res) => {
 	res.send(`
@@ -1572,10 +1595,9 @@ global_app.get("/", (req, res) => {
 					}
 
 					document.getElementById('serversList').innerHTML = servers.map(server => {
-						const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-						const dashboardBtn = server.port && isLocalhost ? 
-							'<button onclick="window.open(\\'http://localhost:' + server.port + '\\', \\'_blank\\')">📊 Dashboard</button>' : 
-							'<button onclick="alert(\\'Bot running on port ' + (server.port || 'N/A') + '.\\\\nDashboard accessible on local machine only.\\')">📊 Info</button>';
+						const dashboardBtn = server.port ? 
+							'<button onclick="window.open(\\'/bot/' + server.folder + '\\', \\'_blank\\')">📊 Dashboard</button>' : 
+							'<button disabled>📊 Dashboard</button>';
 						return '<div class="server-card">' +
 							'<h3>' + (server.username || server.folder) + '</h3>' +
 							'<div class="server-status">' +
