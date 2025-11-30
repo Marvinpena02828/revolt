@@ -1255,10 +1255,12 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	try {
 		addLog({ type: "DebugMessage", message: "Starting bot dashboard server" });
 
-		server.listen(port, () => {
-			open(`http://localhost:${port}`);
-			addLog({ type: "DebugMessage", message: `Now listening to: http://localhost:${port}` });
-		});
+		// Change from localhost to 0.0.0.0
+const port = process.env.PORT || 3000; // Railway assigns PORT env variable
+
+global_server.listen(port, '0.0.0.0', () => {
+  console.log(`Now listening to: http://0.0.0.0:${port}`);
+});
 	} catch (error) {
 		if (error.code == "ERR_SERVER_ALREADY_LISTEN") {
 			addLog({ type: "DebugMessage", message: "Bot dashboard server already running" });
@@ -1273,7 +1275,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 // GLOBAL SERVER SETUP
 // ========================================
 
-var port = await getNextOpenPort(1024);
+var port = process.env.PORT || await getNextOpenPort(1024);
 
 const global_app = express();
 const global_server = createServer(global_app);
