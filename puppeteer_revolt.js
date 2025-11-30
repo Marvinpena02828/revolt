@@ -1453,7 +1453,7 @@ global_app.get("/", (req, res) => {
 				.then(data => {
 					if (!data.error) {
 						statusEl.className = 'config-status';
-						statusEl.textContent = '✅ Config saved successfully! Command: "' + cmd + '" will respond with: "' + resp + '"';
+						statusEl.textContent = '✅ Config saved! Cmd: ' + cmd + ' → ' + resp;
 						statusEl.style.display = 'block';
 					} else {
 						throw new Error('Save failed');
