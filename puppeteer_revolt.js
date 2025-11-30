@@ -1255,12 +1255,9 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	try {
 		addLog({ type: "DebugMessage", message: "Starting bot dashboard server" });
 
-		// Change from localhost to 0.0.0.0
-const port = process.env.PORT || 3000; // Railway assigns PORT env variable
-
-global_server.listen(port, '0.0.0.0', () => {
-  console.log(`Now listening to: http://0.0.0.0:${port}`);
-});
+		server.listen(port, '0.0.0.0', () => {
+			addLog({ type: "DebugMessage", message: `Now listening to: http://0.0.0.0:${port}` });
+		});
 	} catch (error) {
 		if (error.code == "ERR_SERVER_ALREADY_LISTEN") {
 			addLog({ type: "DebugMessage", message: "Bot dashboard server already running" });
@@ -1275,7 +1272,8 @@ global_server.listen(port, '0.0.0.0', () => {
 // GLOBAL SERVER SETUP
 // ========================================
 
-var port = process.env.PORT || await getNextOpenPort(1024);
+const PORT = process.env.PORT || await getNextOpenPort(1024);
+var port = PORT;
 
 const global_app = express();
 const global_server = createServer(global_app);
@@ -1356,10 +1354,10 @@ global_app.post("/api/add_server", async (req, res) => {
 });
 
 const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
-global_server.listen(port, HOST, () => {
+global_server.listen(PORT, HOST, () => {
 	const url = process.env.NODE_ENV === 'production' 
-		? `http://0.0.0.0:${port}` 
-		: `http://localhost:${port}`;
+		? `http://0.0.0.0:${PORT}` 
+		: `http://localhost:${PORT}`;
 	console.log(`Now listening to: ${url}`);
 	if (process.env.NODE_ENV !== 'production') {
 		open(url);
@@ -1376,7 +1374,7 @@ rl.input.on("keypress", async (char, key) => {
 
 	if (key.name === "u") {
 		console.log(`--------------------------`);
-		console.log(`http://localhost:${port}`);
+		console.log(`http://localhost:${PORT}`);
 		console.log(`--------------------------`);
 	}
 });
