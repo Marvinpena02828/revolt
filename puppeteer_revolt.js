@@ -1595,9 +1595,6 @@ global_app.get("/", (req, res) => {
 					}
 
 					document.getElementById('serversList').innerHTML = servers.map(server => {
-						const dashboardBtn = server.port ? 
-							'<button onclick="window.open(\\'/bot/' + server.folder + '\\', \\'_blank\\')">📊 Dashboard</button>' : 
-							'<button disabled>📊 Dashboard</button>';
 						return '<div class="server-card">' +
 							'<h3>' + (server.username || server.folder) + '</h3>' +
 							'<div class="server-status">' +
@@ -1611,8 +1608,8 @@ global_app.get("/", (req, res) => {
 								'Mode: ' + (server.is_headless ? 'Headless' : 'Headful') +
 							'</div>' +
 							'<div class="actions">' +
-								dashboardBtn +
-								'<button class="danger" onclick="deleteServer(\\'' + server.folder + '\\')">Delete</button>' +
+								(server.port ? '<button onclick="openBotDashboard(\'' + server.folder + '\')">📊 Dashboard</button>' : '<button disabled>📊 Dashboard</button>') +
+								'<button class="danger" onclick="deleteServer(\'' + server.folder + '\')">Delete</button>' +
 							'</div>' +
 						'</div>';
 					}).join('');
@@ -1653,7 +1650,10 @@ global_app.get("/", (req, res) => {
 					}
 				}
 
-
+				function openBotDashboard(folder) {
+					const url = '/bot/' + folder;
+					window.open(url, '_blank');
+				}
 
 				// Initial request
 				addLog('info', 'Connecting to bot server...');
