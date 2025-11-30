@@ -115,7 +115,11 @@ function emit_server_info() {
 		}
 	});
 
-	global_io.emit("servers", user_infos);
+	// Emit to global dashboard
+	if (global_io) {
+		global_io.emit("servers", user_infos);
+	}
+	console.log("[emit_server_info]", JSON.stringify(user_infos, null, 2));
 }
 
 function generate_nonce(length) {
@@ -305,6 +309,13 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		}
 	}
 
+	// Helper function to broadcast bot events to global dashboard
+	function broadcastToGlobal(eventName, data) {
+		if (global_io) {
+			global_io.emit(eventName, data);
+		}
+	}
+
 	eventEmitter.on("raw", async (msg) => {
 		addLog(msg);
 	});
@@ -322,6 +333,9 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		io.emit("response_type", responseType);
 		io.emit("bot_version", bot_version);
 		io.emit("instant_responses", instantResponses);
+		// Also broadcast to global dashboard
+		broadcastToGlobal("bot_info", { username: user.username, id: user._id });
+		broadcastToGlobal("serverInfo", clientInfo);
 		emit_server_info();
 		addLog({ type: "DebugMessage", message: `✅ CONNECTED - Bot logged in as: ${user.username}` });
 		logActiveTriggers();  // Show active triggers
@@ -988,6 +1002,12 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		var _log = { timestamp: new Date().getTime(), log, uuid: uuidv4() };
 		logs.unshift(_log);
 		io.emit("log", _log);
+		// CRITICAL: Also emit to global_io so dashboard can see logs
+		if (global_io) {
+			global_io.emit("log", _log);
+		}
+		// Also log to console for debugging
+		console.log(JSON.stringify(log));
 
 		if (logs.length > 20) {
 			logs.pop();
@@ -1125,11 +1145,14 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 // GLOBAL SERVER SETUP
 // ========================================
 
+// Declare global_io at top scope so it's available everywhere
+var global_io;
+
 var port = await getNextOpenPort(1024);
 
 const global_app = express();
 const global_server = createServer(global_app);
-const global_io = new Server(global_server);
+global_io = new Server(global_server);
 
 global_io.on("connection", () => {
 	global_io.emit("bot_version", bot_version);
