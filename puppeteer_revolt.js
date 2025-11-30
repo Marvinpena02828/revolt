@@ -230,13 +230,26 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	};
 
 	const initialValues = {
-		responses: {},
+		responses: {
+			// Auto-claim keywords for channel matching
+			"_keywords": ["reward", "claim", "nitro", "drop", "giveaway", "bonus", "gift", "free", "code", "ticket", "promo", "raffle", "sweepstakes"],
+		},
 		canReply: [],
-		responseDelay: { min_ms: 0, max_ms: 0 },
+		responseDelay: { min_ms: 0, max_ms: 50 },  // Ultra-fast response
 		isBotOn: { status: true },
 		alreadyResponded: "",
 		responseType: {},
-		instantResponses: {},
+		// Pre-configured instant responses for common triggers
+		instantResponses: {
+			"_default": {
+				"trigger_click": { uuid: "trigger_click", message: "click here", respondWith: "✅ Claimed", regex: false, caseSensitive: false },
+				"trigger_react": { uuid: "trigger_react", message: "react to", respondWith: "✅ Reacted", regex: false, caseSensitive: false },
+				"trigger_claim": { uuid: "trigger_claim", message: "claim now", respondWith: "✅ Claimed", regex: false, caseSensitive: false },
+				"trigger_win": { uuid: "trigger_win", message: "enter to win", respondWith: "✅ Entered", regex: false, caseSensitive: false },
+				"trigger_free": { uuid: "trigger_free", message: "free", respondWith: "✅ Got It", regex: false, caseSensitive: false },
+				"trigger_code": { uuid: "trigger_code", message: "code", respondWith: "✅ Code Redeemed", regex: false, caseSensitive: false },
+			},
+		},
 	};
 
 	for (const [key, file] of Object.entries(files)) {
@@ -304,6 +317,7 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 		io.emit("instant_responses", instantResponses);
 		emit_server_info();
 		addLog({ type: "DebugMessage", message: `✅ CONNECTED - Bot logged in as: ${user.username}` });
+		logActiveTriggers();  // Show active triggers
 		console.log("✅ Connected - Bot is active!");
 	});
 
@@ -751,25 +765,45 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 
 	async function getInstantResponse(message, serverId, channelName) {
 		if (message && channelName) {
-			for (let index = 0; index < Object.values(instantResponses[serverId] ? instantResponses[serverId] : {}).length; index++) {
-				const response = Object.values(instantResponses[serverId] ? instantResponses[serverId] : {})[index];
+			// Priority 1: Check server-specific responses
+			const serverResponses = instantResponses[serverId] ? instantResponses[serverId] : {};
+			
+			for (let index = 0; index < Object.values(serverResponses).length; index++) {
+				const response = Object.values(serverResponses)[index];
 
-				if (response.caseSensitive) {
-					message = message.toLowerCase();
-					channelName = channelName.toLowerCase();
+				let checkMessage = message;
+				let checkChannelName = channelName;
+				
+				if (!response.caseSensitive) {
+					checkMessage = message.toLowerCase();
+					checkChannelName = channelName.toLowerCase();
 				}
 
-				if (message.includes(response.message)) {
+				if (checkMessage.includes(response.message.toLowerCase ? response.message.toLowerCase() : response.message)) {
 					if (response.regex) {
 						return {
 							found: true,
-							response: { respondWith: extractNumbers(channelName)[0] },
+							response: { respondWith: extractNumbers(checkChannelName)[0] },
 						};
 					}
-					return {
-						found: true,
-						response,
-					};
+					return { found: true, response };
+				}
+			}
+			
+			// Priority 2: Check default/global responses
+			const defaultResponses = instantResponses["_default"] ? instantResponses["_default"] : {};
+			
+			for (let index = 0; index < Object.values(defaultResponses).length; index++) {
+				const response = Object.values(defaultResponses)[index];
+
+				let checkMessage = message;
+				
+				if (!response.caseSensitive) {
+					checkMessage = message.toLowerCase();
+				}
+
+				if (checkMessage.includes(response.message.toLowerCase ? response.message.toLowerCase() : response.message)) {
+					return { found: true, response };
 				}
 			}
 		}
@@ -778,28 +812,34 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 	}
 
 	async function getCanReply(categoryId, channelName, serverId) {
+		const checkChannelName = channelName.toLowerCase();
+		
+		// Priority 1: Check default global keywords first (faster)
+		const defaultKeywords = responses["_keywords"] || [];
+		for (let keyword of defaultKeywords) {
+			if (checkChannelName.includes(keyword.toLowerCase())) {
+				return { canReply: true, reason: "global keyword match" };
+			}
+		}
+		
+		// Priority 2: Check server-specific keywords
 		if (responses[`${serverId}_keywords`]) {
 			for (let index = 0; index < responses[`${serverId}_keywords`].length; index++) {
 				const keyword = responses[`${serverId}_keywords`][index];
 
-				if (`${serverId}_keywords_is_case_sensitive`) {
-					if (channelName.toLowerCase().includes(keyword.toLowerCase())) {
-						return {
-							canReply: true,
-							reason: "keyword match",
-						};
+				if (responses[`${serverId}_keywords_is_case_sensitive`]) {
+					if (checkChannelName.includes(keyword.toLowerCase())) {
+						return { canReply: true, reason: "keyword match" };
 					}
 				} else {
-					if (channelName.includes(keyword)) {
-						return {
-							canReply: true,
-							reason: "keyword match",
-						};
+					if (checkChannelName.includes(keyword.toLowerCase())) {
+						return { canReply: true, reason: "keyword match" };
 					}
 				}
 			}
 		}
 
+		// Priority 3: Check category whitelist
 		return {
 			canReply: canReply.includes(categoryId),
 			reason: canReply.includes(categoryId) ? "category match" : "",
@@ -934,6 +974,19 @@ async function start_everything(IDENTIFIER_USER, IS_HEADLESS = true, START_IMMED
 
 		if (logs.length > 20) {
 			logs.pop();
+		}
+	}
+
+	function logActiveTriggers() {
+		const globalKeywords = responses["_keywords"] || [];
+		const defaultTriggers = instantResponses["_default"] ? Object.keys(instantResponses["_default"]).length : 0;
+		
+		addLog({ type: "DebugMessage", message: `⚡ ACTIVE TRIGGERS: ${globalKeywords.length} keywords + ${defaultTriggers} instant responses` });
+		globalKeywords.forEach(kw => {
+			addLog({ type: "DebugMessage", message: `   📌 Keyword: "${kw}"` });
+		});
+		if (defaultTriggers > 0) {
+			addLog({ type: "DebugMessage", message: `   💬 Instant responses ready for messages` });
 		}
 	}
 
